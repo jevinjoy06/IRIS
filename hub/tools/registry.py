@@ -1,86 +1,64 @@
-"""Tool definitions (Anthropic schema format) and dispatch."""
+"""Tool definitions (OpenAI/Ollama format) and dispatch."""
 import json
 from hub.tools import file_system, web_search
 from hub import memory
 
+def _fn(name: str, description: str, parameters: dict) -> dict:
+    return {"type": "function", "function": {"name": name, "description": description, "parameters": parameters}}
+
 TOOL_DEFINITIONS = [
-    {
-        "name": "file_read",
-        "description": "Read the contents of a file on the hub machine.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "path": {"type": "string", "description": "Path relative to FILE_SYSTEM_ROOT"},
-            },
-            "required": ["path"],
+    _fn("file_read", "Read the contents of a file on the hub machine.", {
+        "type": "object",
+        "properties": {
+            "path": {"type": "string", "description": "Path relative to FILE_SYSTEM_ROOT"},
         },
-    },
-    {
-        "name": "file_write",
-        "description": "Write content to a file on the hub machine. Creates parent directories as needed.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "path": {"type": "string", "description": "Path relative to FILE_SYSTEM_ROOT"},
-                "content": {"type": "string", "description": "Text content to write"},
-            },
-            "required": ["path", "content"],
+        "required": ["path"],
+    }),
+    _fn("file_write", "Write content to a file on the hub machine. Creates parent directories as needed.", {
+        "type": "object",
+        "properties": {
+            "path": {"type": "string", "description": "Path relative to FILE_SYSTEM_ROOT"},
+            "content": {"type": "string", "description": "Text content to write"},
         },
-    },
-    {
-        "name": "file_list",
-        "description": "List the contents of a directory on the hub machine.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "path": {"type": "string", "description": "Directory path relative to FILE_SYSTEM_ROOT (empty = root)"},
-            },
-            "required": [],
+        "required": ["path", "content"],
+    }),
+    _fn("file_list", "List the contents of a directory on the hub machine.", {
+        "type": "object",
+        "properties": {
+            "path": {"type": "string", "description": "Directory path relative to FILE_SYSTEM_ROOT (empty = root)"},
         },
-    },
-    {
-        "name": "web_search",
-        "description": "Search the web using Tavily. Returns titles, URLs, and snippets.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "Search query"},
-                "max_results": {"type": "integer", "description": "Maximum results to return (default 5)", "default": 5},
-            },
-            "required": ["query"],
+        "required": [],
+    }),
+    _fn("web_search", "Search the web using Tavily. Returns titles, URLs, and snippets.", {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "description": "Search query"},
+            "max_results": {"type": "integer", "description": "Maximum results to return (default 5)"},
         },
-    },
-    {
-        "name": "memory_write",
-        "description": "Save a fact to IRIS's world model. Use for new information worth remembering long-term.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "content": {"type": "string", "description": "The fact to store"},
-                "tier": {
-                    "type": "string",
-                    "enum": ["core", "relevant", "archive"],
-                    "description": "core = always injected; relevant = fetched per query; archive = searchable only",
-                    "default": "relevant",
-                },
-                "importance": {"type": "number", "description": "0.0–1.0 importance score", "default": 0.5},
-                "tags": {"type": "array", "items": {"type": "string"}, "description": "Optional topic tags"},
+        "required": ["query"],
+    }),
+    _fn("memory_write", "Save a fact to IRIS's world model. Use for new information worth remembering long-term.", {
+        "type": "object",
+        "properties": {
+            "content": {"type": "string", "description": "The fact to store"},
+            "tier": {
+                "type": "string",
+                "enum": ["core", "relevant", "archive"],
+                "description": "core = always injected; relevant = fetched per query; archive = searchable only",
             },
-            "required": ["content"],
+            "importance": {"type": "number", "description": "0.0-1.0 importance score"},
+            "tags": {"type": "array", "items": {"type": "string"}, "description": "Optional topic tags"},
         },
-    },
-    {
-        "name": "memory_recall",
-        "description": "Search IRIS's world model for facts matching a query.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "Keywords to search for"},
-                "limit": {"type": "integer", "description": "Max facts to return (default 10)", "default": 10},
-            },
-            "required": ["query"],
+        "required": ["content"],
+    }),
+    _fn("memory_recall", "Search IRIS's world model for facts matching a query.", {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "description": "Keywords to search for"},
+            "limit": {"type": "integer", "description": "Max facts to return (default 10)"},
         },
-    },
+        "required": ["query"],
+    }),
 ]
 
 
