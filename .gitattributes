@@ -1,0 +1,6 @@
+* text=auto eol=lf
+*.v text eol=lf
+*.py text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.xdc text eol=lf

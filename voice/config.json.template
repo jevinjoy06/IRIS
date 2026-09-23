@@ -1,0 +1,9 @@
+{
+  "_comment": "Copy this file to config.json and fill in your keys. config.json is gitignored.",
+  "picovoice_access_key": "YOUR_PICOVOICE_KEY_HERE",
+  "wake_word_model": "computer",
+  "wake_word_ppn_path": null,
+  "ack_delay_seconds": 1.5,
+  "iris_projects_dir": "iris_projects",
+  "keras_backend": "torch"
+}

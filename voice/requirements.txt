@@ -1,0 +1,19 @@
+# Wake word
+pvporcupine
+
+# Transcription — pinned; the git version broke (no setup.py at root)
+useful-moonshine==20241016
+
+# VAD — prebuilt wheels; webrtcvad needs MSVC and fails without Build Tools
+webrtcvad-wheels
+
+# ML backend — moonshine's keras dependency; set KERAS_BACKEND=torch to avoid TensorFlow
+torch
+
+# Audio capture
+sounddevice
+numpy
+
+# System tray
+pystray
+Pillow

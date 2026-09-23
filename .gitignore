@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.env
+venv/
+env/
+.venv/
+
+# Secrets — never commit
+voice/config.json
+
+# Verilog / FPGA (Vivado output)
+*.bit
+*.bin
+*.mmi
+*.log
+*.jou
+*.str
+*.rpt
+*.dcp
+*.xpr
+*.xsa
+*.runs/
+.Xil/
+vivado*/
+*_vivado/
+
+# General
+.DS_Store
+Thumbs.db
+*.bak
+*.swp
