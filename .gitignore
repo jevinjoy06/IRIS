@@ -31,6 +31,10 @@ voice/config.json
 vivado*/
 *_vivado/
 
+# Hub
+hub/.env
+*.db
+
 # General
 .DS_Store
 Thumbs.db
