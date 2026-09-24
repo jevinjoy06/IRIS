@@ -35,6 +35,10 @@ vivado*/
 hub/.env
 *.db
 
+# Node
+node_modules/
+package-lock.json
+
 # Clients
 clients/*/config.json
 
