@@ -1,4 +1,5 @@
 {
-  "_comment": "Copy to config.json — gitignored. Set hub_url to your desktop's LAN IP or tunnel URL.",
-  "hub_url": "ws://YOUR_DESKTOP_IP:7865/ws"
+  "_comment": "Copy to config.json — gitignored. Set hub_url to your desktop's Tailscale IP (stable) or LAN IP.",
+  "_tailscale": "Install Tailscale on both machines, log into the same account. Desktop Tailscale IP: 100.74.253.30",
+  "hub_url": "ws://100.74.253.30:7865/ws"
 }
