@@ -29,7 +29,10 @@ function IrisOrb({ orbState }) {
       lightRef.current.intensity = THREE.MathUtils.lerp(lightRef.current.intensity, cfg.light, k)
     }
     if (ring1Ref.current) ring1Ref.current.rotation.z += delta * 0.35
-    if (ring2Ref.current) ring2Ref.current.rotation.x += delta * 0.22
+    if (ring2Ref.current) {
+      ring2Ref.current.rotation.y += delta * 0.28
+      ring2Ref.current.rotation.z += delta * 0.08
+    }
   })
 
   const cfg = STATE_CFG[orbState] ?? STATE_CFG.idle
@@ -41,11 +44,11 @@ function IrisOrb({ orbState }) {
       <pointLight position={[-3, 2, -2]} intensity={0.6} color="#a78bfa" />
 
       {/* Outer orbiting rings */}
-      <Torus ref={ring1Ref} args={[1.65, 0.012, 8, 120]}>
-        <meshBasicMaterial color="#3b82f6" transparent opacity={0.3} />
+      <Torus ref={ring1Ref} args={[1.45, 0.012, 8, 120]}>
+        <meshBasicMaterial color="#3b82f6" transparent opacity={0.32} />
       </Torus>
-      <Torus ref={ring2Ref} args={[1.95, 0.008, 8, 120]} rotation={[Math.PI / 3, 0, 0]}>
-        <meshBasicMaterial color="#8b5cf6" transparent opacity={0.18} />
+      <Torus ref={ring2Ref} args={[1.75, 0.008, 8, 120]} rotation={[Math.PI / 5, 0, Math.PI / 4]}>
+        <meshBasicMaterial color="#8b5cf6" transparent opacity={0.2} />
       </Torus>
 
       {/* Core orb with gentle float */}
@@ -79,7 +82,12 @@ const STATUS_LABEL = {
 export default function OrbScene({ orbState }) {
   return (
     <div className="relative w-full h-full">
-      <Canvas camera={{ position: [0, 0, 3.8], fov: 42 }} style={{ background: 'transparent' }}>
+      {/* Ambient radial glow behind orb */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{ background: 'radial-gradient(ellipse 55% 45% at 50% 48%, rgba(29,78,216,0.10) 0%, transparent 70%)' }}
+      />
+      <Canvas camera={{ position: [0, 0, 5.0], fov: 42 }} style={{ background: 'transparent' }}>
         <IrisOrb orbState={orbState} />
       </Canvas>
 

@@ -118,13 +118,13 @@ export default function App() {
     <div className="flex flex-col h-screen bg-[#06060f] text-white overflow-hidden">
       <Header connected={connected} hubUrl={hubUrl} onReconnect={reconnect} />
 
-      {/* Orb — upper 55% */}
-      <div className="flex-[11] min-h-0">
+      {/* Orb — upper 65% */}
+      <div className="flex-[13] min-h-0">
         <OrbScene orbState={orbState} />
       </div>
 
-      {/* Message thread — lower 45% */}
-      <div className="flex-[9] min-h-0 border-t border-white/[0.06] flex flex-col">
+      {/* Message thread — lower 35% */}
+      <div className="flex-[7] min-h-0 border-t border-white/[0.06] flex flex-col">
         <ChatWindow messages={messages} />
         <InputBar onSend={sendMessage} disabled={!connected || sending} />
       </div>
