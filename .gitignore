@@ -35,6 +35,9 @@ vivado*/
 hub/.env
 *.db
 
+# Clients
+clients/*/config.json
+
 # General
 .DS_Store
 Thumbs.db
