@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import Sidebar from './components/Sidebar'
+import Header from './components/Header'
 import ChatWindow from './components/ChatWindow'
 import InputBar from './components/InputBar'
 
@@ -14,6 +14,8 @@ export default function App() {
   const hubUrl = window.irisConfig?.hubUrl || 'ws://localhost:7865/ws'
 
   const connect = useCallback(() => {
+    if (wsRef.current?.readyState === WebSocket.CONNECTING) return
+
     const ws = new WebSocket(hubUrl)
     wsRef.current = ws
 
@@ -24,6 +26,17 @@ export default function App() {
 
     ws.onclose = () => {
       setConnected(false)
+      if (streamingIdRef.current) {
+        setMessages(prev =>
+          prev.map(m =>
+            m.id === streamingIdRef.current
+              ? { ...m, text: m.text || 'Connection lost', streaming: false, error: true }
+              : m
+          )
+        )
+        streamingIdRef.current = null
+        setSending(false)
+      }
       reconnectTimerRef.current = setTimeout(connect, 3000)
     }
 
@@ -60,6 +73,15 @@ export default function App() {
     }
   }, [hubUrl])
 
+  const reconnect = useCallback(() => {
+    clearTimeout(reconnectTimerRef.current)
+    if (wsRef.current) {
+      wsRef.current.onclose = null
+      wsRef.current.close()
+    }
+    connect()
+  }, [connect])
+
   useEffect(() => {
     connect()
     return () => {
@@ -79,12 +101,10 @@ export default function App() {
   }, [])
 
   return (
-    <div className="flex h-screen bg-[#0f0f0f] text-white">
-      <Sidebar hubUrl={hubUrl} connected={connected} />
-      <div className="flex flex-col flex-1 min-w-0">
-        <ChatWindow messages={messages} />
-        <InputBar onSend={sendMessage} disabled={!connected || sending} />
-      </div>
+    <div className="flex flex-col h-screen bg-[#0f0f0f] text-white">
+      <Header connected={connected} hubUrl={hubUrl} onReconnect={reconnect} />
+      <ChatWindow messages={messages} />
+      <InputBar onSend={sendMessage} disabled={!connected || sending} />
     </div>
   )
 }
