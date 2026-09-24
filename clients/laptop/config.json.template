@@ -1,0 +1,4 @@
+{
+  "_comment": "Copy to config.json — gitignored. Set hub_url to your desktop's LAN IP or tunnel URL.",
+  "hub_url": "ws://YOUR_DESKTOP_IP:7865/ws"
+}
