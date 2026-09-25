@@ -10,10 +10,14 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@react-three/fiber": "^9.8.1",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "three": "^0.186.1"
   },
   "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
     "concurrently": "^9.1.2",
@@ -21,6 +25,7 @@
     "electron": "^33.2.1",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.16",
+    "typescript": "^7.0.2",
     "vite": "^5.4.11",
     "wait-on": "^8.0.1"
   }
