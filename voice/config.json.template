@@ -5,5 +5,6 @@
   "wake_word_ppn_path": null,
   "ack_delay_seconds": 1.5,
   "iris_projects_dir": "iris_projects",
-  "keras_backend": "torch"
+  "keras_backend": "torch",
+  "hub_url": "ws://localhost:7865/ws"
 }

@@ -14,6 +14,9 @@ torch
 sounddevice
 numpy
 
+# Hub WebSocket connection
+websockets
+
 # System tray
 pystray
 Pillow
