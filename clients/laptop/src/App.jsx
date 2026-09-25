@@ -1,14 +1,16 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import Header from './components/Header'
 import OrbScene from './components/OrbScene'
-import ChatWindow from './components/ChatWindow'
 import InputBar from './components/InputBar'
+import TransientResponse from './components/TransientResponse'
+import HistoryDrawer from './components/HistoryDrawer'
 
 export default function App() {
-  const [messages, setMessages]   = useState([])
-  const [connected, setConnected] = useState(false)
-  const [sending, setSending]     = useState(false)
-  const [streaming, setStreaming] = useState(false)
+  const [messages, setMessages]     = useState([])
+  const [connected, setConnected]   = useState(false)
+  const [sending, setSending]       = useState(false)
+  const [streaming, setStreaming]   = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
   const wsRef             = useRef(null)
   const streamingIdRef    = useRef(null)
   const reconnectTimerRef = useRef(null)
@@ -22,6 +24,8 @@ export default function App() {
       : sending
         ? 'thinking'
         : 'idle'
+
+  const lastAssistant = messages.filter(m => m.role === 'assistant').at(-1)
 
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.CONNECTING) return
@@ -115,19 +119,37 @@ export default function App() {
   }, [])
 
   return (
-    <div className="flex flex-col h-screen bg-[#06060f] text-white overflow-hidden">
-      <Header connected={connected} hubUrl={hubUrl} onReconnect={reconnect} />
+    <div className="relative h-screen bg-[#06060f] text-white overflow-hidden">
+      {/* Full-screen orb */}
+      <OrbScene orbState={orbState} />
 
-      {/* Orb — upper 65% */}
-      <div className="flex-[13] min-h-0">
-        <OrbScene orbState={orbState} />
+      {/* Header */}
+      <div className="absolute top-0 left-0 right-0 z-10">
+        <Header connected={connected} hubUrl={hubUrl} onReconnect={reconnect} />
       </div>
 
-      {/* Message thread — lower 35% */}
-      <div className="flex-[7] min-h-0 border-t border-white/[0.06] flex flex-col">
-        <ChatWindow messages={messages} />
-        <InputBar onSend={sendMessage} disabled={!connected || sending} />
+      {/* Last IRIS response — fades in near orb, fades out after 5s */}
+      <TransientResponse
+        key={lastAssistant?.id}
+        text={lastAssistant?.text ?? ''}
+        streaming={streaming}
+      />
+
+      {/* Floating input bar */}
+      <div className="absolute bottom-4 left-4 right-4 z-10">
+        <InputBar
+          onSend={sendMessage}
+          disabled={!connected || sending}
+          onHistory={() => setHistoryOpen(true)}
+        />
       </div>
+
+      {/* Slide-up history drawer */}
+      <HistoryDrawer
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        messages={messages}
+      />
     </div>
   )
 }
