@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import Header from './components/Header'
+import StatusPill from './components/StatusPill'
 import OrbScene from './components/OrbScene'
 import InputBar from './components/InputBar'
 import TransientResponse from './components/TransientResponse'
@@ -123,10 +123,7 @@ export default function App() {
       {/* Full-screen orb */}
       <OrbScene orbState={orbState} />
 
-      {/* Header */}
-      <div className="absolute top-0 left-0 right-0 z-10">
-        <Header connected={connected} hubUrl={hubUrl} onReconnect={reconnect} />
-      </div>
+      <StatusPill connected={connected} onReconnect={reconnect} />
 
       {/* Last IRIS response — fades in near orb, fades out after 5s */}
       <TransientResponse

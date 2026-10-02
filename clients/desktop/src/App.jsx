@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import Header from './components/Header'
+import StatusPill from './components/StatusPill'
 import OrbScene from './components/OrbScene'
 import InputBar from './components/InputBar'
 import TransientResponse from './components/TransientResponse'
@@ -122,9 +122,7 @@ export default function App() {
     <div className="relative h-screen bg-[#06060f] text-white overflow-hidden">
       <OrbScene orbState={orbState} />
 
-      <div className="absolute top-0 left-0 right-0 z-10">
-        <Header connected={connected} hubUrl={hubUrl} onReconnect={reconnect} />
-      </div>
+      <StatusPill connected={connected} onReconnect={reconnect} />
 
       <TransientResponse
         key={lastAssistant?.id}

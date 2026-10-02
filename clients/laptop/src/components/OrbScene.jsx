@@ -45,16 +45,11 @@ export default function OrbScene({ orbState }) {
   const cfg = STATE_CFG[orbState] ?? STATE_CFG.idle
 
   return (
-    <div className="absolute inset-0">
-      {/* Full-screen gradient shader orb — no external assets, CSP-safe */}
+    <div
+      className="absolute inset-0 transition-opacity duration-1000"
+      style={{ opacity: orbState === 'disconnected' ? 0.45 : 1 }}
+    >
       <GradientOrb config={cfg} className="absolute inset-0" />
-
-      {/* Status label floated above the orb */}
-      <div className="absolute bottom-20 left-0 right-0 flex justify-center pointer-events-none z-10">
-        <span className="text-[11px] font-mono tracking-[0.2em] uppercase text-white/30 select-none">
-          {STATUS_LABEL[orbState] ?? 'Ready'}
-        </span>
-      </div>
     </div>
   )
 }
