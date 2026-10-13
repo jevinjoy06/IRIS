@@ -1,6 +1,7 @@
 {
   "_comment": "Copy this file to config.json and fill in your keys. config.json is gitignored.",
   "hub_url": "ws://localhost:7865/ws",
+  "picovoice_access_key": "YOUR_PICOVOICE_KEY_HERE",
   "wake_word_model": "hey_jarvis",
   "wake_word_threshold": 0.5,
   "active_session_timeout_seconds": 30,
