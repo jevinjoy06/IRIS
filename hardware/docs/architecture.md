@@ -8,7 +8,7 @@ Target: Basys 3 (Artix-7 XC7A35T). Replaces the software wake-word step in IRIS 
 |---|---|---|
 | 1 | Single MAC unit (`rtl/mac_unit.v`) | **Complete** — 7/7 tests passing |
 | 2 | Systolic array (chained MACs) | **Complete** — 6/6 tests passing |
-| 3 | Wake-word NN (2–3 layers) on real audio | Not started |
+| 3 | Wake-word NN (2–3 layers) on real audio | **Complete** — 4/4 tests passing |
 | 3a | Custom audio front-end PCB (MEMS mic → ADC/PDM, Adom KiCad Bridge) | Not started |
 | 4 | IRIS UART integration + live demo | Not started |
 
@@ -28,6 +28,17 @@ Target: Basys 3 (Artix-7 XC7A35T). Replaces the software wake-word step in IRIS 
 - **DSP48E1:** one DSP slice per column × COLS = 4 DSPs for default 4×4 array (90 available on XC7A35T)
 - **Testbenches:** `tb/tb_pe.v` (5/5) + `tb/tb_systolic_array.v` (6/6); VCD in `hardware/sim/`
 - Signed arithmetic inherited from mac_unit's `$signed()` multiply
+
+## Phase 3 implementation notes
+- **RTL files:** `rtl/relu.v` (combinational ReLU+saturation) + `rtl/nn_2layer.v` (FSM-driven 2-layer FC network)
+- **Computation:** logits = W2 · ReLU(W1 · x) — two systolic arrays chained with ReLU quantization between layers
+- **Parameters:** IN_FEATURES=4, HIDDEN_SIZE=4, CLASSES=2, DATA_WIDTH=16, ACC_WIDTH=32
+- **ReLU:** clips negative values to 0, saturates > 32767 to 32767, otherwise takes lower 16 bits of 32-bit accumulator
+- **FSM states:** IDLE → L1_LOAD → L1_STREAM (IN_FEATURES cy) → L1_DRAIN → L2_LOAD → L2_STREAM (HIDDEN_SIZE cy) → L2_DRAIN → OUTPUT → IDLE
+- **Latency:** ~15 cycles from `start` pulse to `valid_out` at 100 MHz (150 ns)
+- **Resources:** 4 DSP48E1 slices for L1 (4×4) + 2 for L2 (4×2) = 6 DSPs total (90 available on XC7A35T)
+- **Testbench:** `tb/tb_nn_2layer.v` (4/4); VCD in `hardware/sim/tb_nn_2layer.vcd`
+- **argmax:** combinational comparison of 2 logits; outputs 1-bit class index
 
 ## Open design decisions
 - Fixed-point number format (bit width, fractional bits) for MAC operands
