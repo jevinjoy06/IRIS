@@ -1,11 +1,15 @@
-# Wake word
-pvporcupine
+# Wake word — open-source alternative to Picovoice
+openwakeword
+onnxruntime
 
 # Transcription — pinned; the git version broke (no setup.py at root)
 useful-moonshine==20241016
 
 # VAD — prebuilt wheels; webrtcvad needs MSVC and fails without Build Tools
 webrtcvad-wheels
+
+# Text-to-speech — pyttsx3 speaks responses aloud in background thread
+pyttsx3
 
 # ML backend — moonshine's keras dependency; set KERAS_BACKEND=torch to avoid TensorFlow
 torch
