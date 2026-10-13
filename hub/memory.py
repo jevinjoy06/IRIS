@@ -127,6 +127,10 @@ def build_memory_context(query: str) -> str:
     return "\n\n".join(parts)
 
 
+<<<<<<< HEAD
+# Session and turn management
+=======
+>>>>>>> origin/master
 def start_session() -> str:
     """Create a new conversation session and return its UUID."""
     return str(uuid.uuid4())
@@ -176,6 +180,107 @@ def get_session_turns(session_id: str, limit: int = 20) -> list[dict]:
             """SELECT id, role, content, tool_name, created_at
                FROM turns
                WHERE session_id = ?
+<<<<<<< HEAD
+               ORDER BY created_at ASC
+               LIMIT ?""",
+            (session_id, limit),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+# Facts REST API functions
+def get_fact(fact_id: int) -> dict | None:
+    """Get a single fact by ID."""
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM facts WHERE id = ?",
+            (fact_id,),
+        ).fetchone()
+    if row:
+        return dict(row)
+    return None
+
+
+def list_facts(include_archived: bool = False) -> list[dict]:
+    """
+    List all facts, optionally excluding archived ones.
+
+    Args:
+        include_archived: If False, exclude tier='archive' facts
+
+    Returns:
+        List of fact dicts sorted by importance DESC
+    """
+    with _connect() as conn:
+        if include_archived:
+            rows = conn.execute(
+                "SELECT * FROM facts ORDER BY importance DESC"
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM facts WHERE tier != 'archive' ORDER BY importance DESC"
+            ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def update_fact(
+    fact_id: int,
+    content: str | None = None,
+    tier: str | None = None,
+    importance: float | None = None,
+    tags: list[str] | None = None,
+) -> bool:
+    """
+    Update a fact's fields.
+
+    Returns:
+        True if updated, False if fact not found
+    """
+    if all(x is None for x in [content, tier, importance, tags]):
+        return False
+
+    updates: list[str] = []
+    params: list = []
+
+    if content is not None:
+        updates.append("content = ?")
+        params.append(content)
+    if tier is not None:
+        updates.append("tier = ?")
+        params.append(tier)
+    if importance is not None:
+        updates.append("importance = ?")
+        params.append(importance)
+    if tags is not None:
+        updates.append("tags = ?")
+        params.append(json.dumps(tags))
+
+    params.append(fact_id)
+    with _connect() as conn:
+        cur = conn.execute(
+            f"UPDATE facts SET {', '.join(updates)} WHERE id = ?",
+            params,
+        )
+        return cur.rowcount > 0
+
+
+def delete_fact(fact_id: int) -> bool:
+    """
+    Delete a fact by ID.
+
+    Returns:
+        True if deleted, False if not found
+    """
+    with _connect() as conn:
+        cur = conn.execute("DELETE FROM facts WHERE id = ?", (fact_id,))
+        return cur.rowcount > 0
+
+
+# Conversations REST API functions
+def list_conversations(limit: int = 20) -> list[dict]:
+    """
+    Get recent conversation sessions with metadata.
+=======
                ORDER BY created_at DESC
                LIMIT ?""",
             (session_id, limit),
@@ -186,19 +291,64 @@ def get_session_turns(session_id: str, limit: int = 20) -> list[dict]:
 def get_recent_sessions(limit: int = 5) -> list[str]:
     """
     Get the most recent conversation session IDs.
+>>>>>>> origin/master
 
     Args:
         limit: Max sessions to return
 
     Returns:
+<<<<<<< HEAD
+        List of dicts with session_id, first_message, turn_count, created_at
+    """
+    with _connect() as conn:
+        rows = conn.execute(
+            """SELECT
+                   session_id,
+                   (SELECT content FROM turns WHERE session_id = t.session_id AND role = 'user' ORDER BY created_at ASC LIMIT 1) as first_message,
+                   COUNT(*) as turn_count,
+                   MIN(created_at) as created_at
+               FROM turns t
+               GROUP BY session_id
+=======
         List of session_ids
     """
     with _connect() as conn:
         rows = conn.execute(
             """SELECT DISTINCT session_id
                FROM turns
+>>>>>>> origin/master
                ORDER BY created_at DESC
                LIMIT ?""",
             (limit,),
         ).fetchall()
+<<<<<<< HEAD
+    return [dict(row) for row in rows]
+
+
+def get_recent_sessions(limit: int = 5) -> list[str]:
+    """Get the most recent conversation session IDs."""
+    with _connect() as conn:
+        rows = conn.execute(
+            """SELECT session_id
+               FROM turns
+               GROUP BY session_id
+               ORDER BY MAX(created_at) DESC
+               LIMIT ?""",
+            (limit,),
+        ).fetchall()
     return [row["session_id"] for row in rows]
+
+
+def delete_conversation(session_id: str) -> int:
+    """
+    Delete all turns for a conversation session.
+
+    Returns:
+        Number of turns deleted
+    """
+    with _connect() as conn:
+        cur = conn.execute("DELETE FROM turns WHERE session_id = ?", (session_id,))
+        return cur.rowcount
+=======
+    return [row["session_id"] for row in rows]
+>>>>>>> origin/master

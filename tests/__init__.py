@@ -1,1 +1,1 @@
-"""Test suite for IRIS voice pipeline."""
+"""IRIS test suite."""

@@ -191,14 +191,12 @@ async def async_dispatch(tool_name: str, tool_input: dict, ws: "WebSocket") -> s
     """
     try:
         if tool_name == "timer_set":
-            # Spawn the async timer task
             import asyncio
             seconds = tool_input["seconds"]
             message = tool_input["message"]
             asyncio.create_task(timers.set_timer_task(seconds, message, ws))
             result = timers.set_timer(seconds, message)
         else:
-            # Delegate to sync dispatch for all other tools
             result_json = dispatch(tool_name, tool_input)
             result = json.loads(result_json)
     except Exception as e:
