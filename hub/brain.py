@@ -40,10 +40,28 @@ def _make_client():
     return AsyncOpenAI(base_url=OLLAMA_BASE_URL, api_key="ollama")
 
 
-async def process_turn(user_text: str, ws: "WebSocket") -> None:
+async def process_turn(user_text: str, ws: "WebSocket", session_id: str | None = None) -> None:
     client = _make_client()
 
+    # Initialize session if not provided
+    if session_id is None:
+        session_id = memory.start_session()
+
+    # Save user message
+    memory.save_turn(session_id, "user", user_text)
+
     mem_context = memory.build_memory_context(user_text)
+
+    # Load recent turns for conversation context
+    recent_turns = memory.get_session_turns(session_id, limit=10)
+    if recent_turns and len(recent_turns) > 1:  # Exclude the just-saved user turn
+        history_lines = []
+        for t in recent_turns[:-1]:
+            prefix = {"user": "User", "assistant": "IRIS", "tool": f"Tool({t.get('tool_name','?')})"}.get(t["role"], t["role"])
+            history_lines.append(f"[{prefix}]: {t['content'][:500]}")
+        if history_lines:
+            mem_context = "\n\n## Recent conversation\n" + "\n".join(history_lines) + ("\n\n" + mem_context if mem_context else "")
+
     system = SYSTEM_PROMPT + ("\n\n" + mem_context if mem_context else "")
 
     messages: list[dict] = [
@@ -107,6 +125,10 @@ async def process_turn(user_text: str, ws: "WebSocket") -> None:
                 assistant_msg["content"] = current_text
             messages.append(assistant_msg)
 
+            # Save assistant message with tool calls
+            if current_text:
+                memory.save_turn(session_id, "assistant", current_text)
+
             for tc in tool_calls_map.values():
                 await ws.send_json({"type": "tool_use", "tool": tc["name"]})
                 try:
@@ -114,6 +136,8 @@ async def process_turn(user_text: str, ws: "WebSocket") -> None:
                 except json.JSONDecodeError:
                     args = {}
                 result = dispatch(tc["name"], args)
+                # Save tool call result
+                memory.save_turn(session_id, "tool", result, tool_name=tc["name"])
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tc["id"],
@@ -121,6 +145,9 @@ async def process_turn(user_text: str, ws: "WebSocket") -> None:
                 })
         else:
             messages.append({"role": "assistant", "content": current_text})
+            # Save final assistant message
+            if current_text:
+                memory.save_turn(session_id, "assistant", current_text)
             break
 
     await ws.send_json({"type": "done"})

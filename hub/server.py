@@ -10,6 +10,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 from hub import brain, memory
 
@@ -18,7 +19,7 @@ app = FastAPI(title="IRIS Hub")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_methods=["GET"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE"],
     allow_headers=["*"],
 )
 
@@ -55,13 +56,14 @@ async def status() -> JSONResponse:
 async def websocket_endpoint(ws: WebSocket) -> None:
     await ws.accept()
     _connected_clients.add(ws)
+    session_id = memory.start_session()
     try:
         while True:
             data = await ws.receive_json()
             if data.get("type") == "message":
                 text = data.get("text", "").strip()
                 if text:
-                    await brain.process_turn(text, ws)
+                    await brain.process_turn(text, ws, session_id=session_id)
     except WebSocketDisconnect:
         pass
     except Exception as e:
@@ -71,3 +73,99 @@ async def websocket_endpoint(ws: WebSocket) -> None:
             pass
     finally:
         _connected_clients.discard(ws)
+
+
+# Pydantic models for REST API
+class FactCreate(BaseModel):
+    content: str
+    tier: str = "relevant"
+    importance: float = 0.5
+    tags: list[str] = []
+
+
+class FactUpdate(BaseModel):
+    content: str | None = None
+    tier: str | None = None
+    importance: float | None = None
+    tags: list[str] | None = None
+
+
+# Facts REST endpoints
+@app.get("/api/facts")
+async def list_facts_endpoint() -> JSONResponse:
+    """List all non-archived facts, sorted by importance descending."""
+    facts = memory.list_facts(include_archived=False)
+    return JSONResponse(facts)
+
+
+@app.get("/api/facts/{fact_id}")
+async def get_fact_endpoint(fact_id: int) -> JSONResponse:
+    """Get a single fact by ID."""
+    fact = memory.get_fact(fact_id)
+    if fact is None:
+        return JSONResponse({"error": "Fact not found"}, status_code=404)
+    return JSONResponse(fact)
+
+
+@app.post("/api/facts")
+async def create_fact_endpoint(body: FactCreate) -> JSONResponse:
+    """Create a new fact."""
+    fact_id = memory.write_fact(
+        content=body.content,
+        tier=body.tier,
+        importance=body.importance,
+        tags=body.tags,
+    )
+    fact = memory.get_fact(fact_id)
+    return JSONResponse(fact, status_code=201)
+
+
+@app.patch("/api/facts/{fact_id}")
+async def update_fact_endpoint(fact_id: int, body: FactUpdate) -> JSONResponse:
+    """Update a fact's fields."""
+    updated = memory.update_fact(
+        fact_id,
+        content=body.content,
+        tier=body.tier,
+        importance=body.importance,
+        tags=body.tags,
+    )
+    if not updated:
+        return JSONResponse({"error": "Fact not found"}, status_code=404)
+    fact = memory.get_fact(fact_id)
+    return JSONResponse(fact)
+
+
+@app.delete("/api/facts/{fact_id}")
+async def delete_fact_endpoint(fact_id: int) -> JSONResponse:
+    """Delete a fact by ID."""
+    deleted = memory.delete_fact(fact_id)
+    if not deleted:
+        return JSONResponse({"error": "Fact not found"}, status_code=404)
+    return JSONResponse({"success": True})
+
+
+# Conversations REST endpoints
+@app.get("/api/conversations")
+async def list_conversations_endpoint() -> JSONResponse:
+    """List recent conversation sessions with metadata."""
+    conversations = memory.list_conversations(limit=20)
+    return JSONResponse(conversations)
+
+
+@app.get("/api/conversations/{session_id}")
+async def get_conversation_endpoint(session_id: str) -> JSONResponse:
+    """Get all turns for a conversation session."""
+    turns = memory.get_session_turns(session_id, limit=100)
+    if not turns:
+        return JSONResponse({"error": "Session not found"}, status_code=404)
+    return JSONResponse(turns)
+
+
+@app.delete("/api/conversations/{session_id}")
+async def delete_conversation_endpoint(session_id: str) -> JSONResponse:
+    """Delete all turns for a conversation session."""
+    count = memory.delete_conversation(session_id)
+    if count == 0:
+        return JSONResponse({"error": "Session not found"}, status_code=404)
+    return JSONResponse({"deleted_turns": count})

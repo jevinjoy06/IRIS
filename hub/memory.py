@@ -1,5 +1,6 @@
 import json
 import sqlite3
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
@@ -34,6 +35,16 @@ def init_db() -> None:
                 access_count INTEGER NOT NULL DEFAULT 0,
                 last_accessed TEXT,
                 created_at   TEXT    NOT NULL
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS turns (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT    NOT NULL,
+                role       TEXT    NOT NULL,
+                content    TEXT    NOT NULL,
+                tool_name  TEXT,
+                created_at TEXT    NOT NULL
             )
         """)
 
@@ -114,3 +125,187 @@ def build_memory_context(query: str) -> str:
     if relevant:
         parts.append("## Relevant facts\n" + "\n".join(f"- {f}" for f in relevant))
     return "\n\n".join(parts)
+
+
+# Session and turn management
+def start_session() -> str:
+    """Create a new conversation session and return its UUID."""
+    return str(uuid.uuid4())
+
+
+def save_turn(
+    session_id: str,
+    role: str,
+    content: str,
+    tool_name: str | None = None,
+) -> int:
+    """
+    Save a conversation turn to the turns table.
+
+    Args:
+        session_id: UUID of the conversation session
+        role: 'user', 'assistant', or 'tool'
+        content: The message/result content
+        tool_name: If role=='tool', the tool name that was invoked
+
+    Returns:
+        The turn id
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    with _connect() as conn:
+        cur = conn.execute(
+            """INSERT INTO turns (session_id, role, content, tool_name, created_at)
+               VALUES (?, ?, ?, ?, ?)""",
+            (session_id, role, content, tool_name, now),
+        )
+        return cur.lastrowid
+
+
+def get_session_turns(session_id: str, limit: int = 20) -> list[dict]:
+    """
+    Get recent turns from a conversation session.
+
+    Args:
+        session_id: UUID of the session
+        limit: Max turns to return
+
+    Returns:
+        List of turn dicts with id, role, content, tool_name, created_at
+    """
+    with _connect() as conn:
+        rows = conn.execute(
+            """SELECT id, role, content, tool_name, created_at
+               FROM turns
+               WHERE session_id = ?
+               ORDER BY created_at ASC
+               LIMIT ?""",
+            (session_id, limit),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+# Facts REST API functions
+def get_fact(fact_id: int) -> dict | None:
+    """Get a single fact by ID."""
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM facts WHERE id = ?",
+            (fact_id,),
+        ).fetchone()
+    if row:
+        return dict(row)
+    return None
+
+
+def list_facts(include_archived: bool = False) -> list[dict]:
+    """
+    List all facts, optionally excluding archived ones.
+
+    Args:
+        include_archived: If False, exclude tier='archive' facts
+
+    Returns:
+        List of fact dicts sorted by importance DESC
+    """
+    with _connect() as conn:
+        if include_archived:
+            rows = conn.execute(
+                "SELECT * FROM facts ORDER BY importance DESC"
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM facts WHERE tier != 'archive' ORDER BY importance DESC"
+            ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def update_fact(
+    fact_id: int,
+    content: str | None = None,
+    tier: str | None = None,
+    importance: float | None = None,
+    tags: list[str] | None = None,
+) -> bool:
+    """
+    Update a fact's fields.
+
+    Returns:
+        True if updated, False if fact not found
+    """
+    if all(x is None for x in [content, tier, importance, tags]):
+        return False
+
+    updates: list[str] = []
+    params: list = []
+
+    if content is not None:
+        updates.append("content = ?")
+        params.append(content)
+    if tier is not None:
+        updates.append("tier = ?")
+        params.append(tier)
+    if importance is not None:
+        updates.append("importance = ?")
+        params.append(importance)
+    if tags is not None:
+        updates.append("tags = ?")
+        params.append(json.dumps(tags))
+
+    params.append(fact_id)
+    with _connect() as conn:
+        cur = conn.execute(
+            f"UPDATE facts SET {', '.join(updates)} WHERE id = ?",
+            params,
+        )
+        return cur.rowcount > 0
+
+
+def delete_fact(fact_id: int) -> bool:
+    """
+    Delete a fact by ID.
+
+    Returns:
+        True if deleted, False if not found
+    """
+    with _connect() as conn:
+        cur = conn.execute("DELETE FROM facts WHERE id = ?", (fact_id,))
+        return cur.rowcount > 0
+
+
+# Conversations REST API functions
+def list_conversations(limit: int = 20) -> list[dict]:
+    """
+    Get recent conversation sessions with metadata.
+
+    Args:
+        limit: Max sessions to return
+
+    Returns:
+        List of dicts with session_id, first_message, turn_count, created_at
+    """
+    with _connect() as conn:
+        rows = conn.execute(
+            """SELECT
+                   session_id,
+                   (SELECT content FROM turns WHERE session_id = t.session_id AND role = 'user' ORDER BY created_at ASC LIMIT 1) as first_message,
+                   COUNT(*) as turn_count,
+                   MIN(created_at) as created_at
+               FROM turns t
+               GROUP BY session_id
+               ORDER BY created_at DESC
+               LIMIT ?""",
+            (limit,),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def delete_conversation(session_id: str) -> int:
+    """
+    Delete all turns for a conversation session.
+
+    Returns:
+        Number of turns deleted
+    """
+    with _connect() as conn:
+        cur = conn.execute("DELETE FROM turns WHERE session_id = ?", (session_id,))
+        return cur.rowcount
