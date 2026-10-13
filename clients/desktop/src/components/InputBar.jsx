@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 
-export default function InputBar({ onSend, disabled, onHistory }) {
+export default function InputBar({ onSend, disabled, connected, onHistory }) {
   const [value, setValue] = useState('')
   const textareaRef = useRef(null)
 
@@ -28,7 +28,7 @@ export default function InputBar({ onSend, disabled, onHistory }) {
         onKeyDown={handleKeyDown}
         disabled={disabled}
         rows={1}
-        placeholder={disabled ? 'Connecting...' : 'Say or type…'}
+        placeholder={!connected ? 'Connecting...' : disabled ? 'Thinking…' : 'Say or type…'}
         className="flex-1 bg-transparent text-[13px] text-white/80 placeholder-white/20 resize-none outline-none py-1 max-h-28 overflow-y-auto disabled:opacity-30"
       />
       {onHistory && (

@@ -61,9 +61,10 @@ export default function App() {
       const msg = JSON.parse(event.data)
       if (msg.type === 'token') {
         setStreaming(true)
-        setMessages(prev =>
-          prev.map(m => m.id === streamingIdRef.current ? { ...m, text: m.text + msg.text } : m)
-        )
+        setMessages(prev => {
+          const targetId = streamingIdRef.current ?? prev.findLast?.(m => m.role === 'assistant' && m.streaming)?.id
+          return prev.map(m => m.id === targetId ? { ...m, text: m.text + msg.text } : m)
+        })
       } else if (msg.type === 'tool_use') {
         setMessages(prev => [
           ...prev,
@@ -72,7 +73,7 @@ export default function App() {
       } else if (msg.type === 'done') {
         setStreaming(false)
         setMessages(prev =>
-          prev.map(m => m.id === streamingIdRef.current ? { ...m, streaming: false } : m)
+          prev.map(m => m.streaming ? { ...m, streaming: false } : m)
         )
         streamingIdRef.current = null
         setSending(false)
@@ -80,8 +81,8 @@ export default function App() {
         setStreaming(false)
         setMessages(prev =>
           prev.map(m =>
-            m.id === streamingIdRef.current
-              ? { ...m, text: msg.text, streaming: false, error: true }
+            m.streaming
+              ? { ...m, text: msg.text || m.text, streaming: false, error: true }
               : m
           )
         )
@@ -134,6 +135,7 @@ export default function App() {
         <InputBar
           onSend={sendMessage}
           disabled={!connected || sending}
+          connected={connected}
           onHistory={() => setHistoryOpen(true)}
         />
       </div>

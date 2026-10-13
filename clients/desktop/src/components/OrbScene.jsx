@@ -1,4 +1,19 @@
+import { Component } from 'react'
 import { GradientOrb } from '@/components/ui/gradient-orb'
+
+class OrbErrorBoundary extends Component {
+  constructor(props) {
+    super(props)
+    this.state = { failed: false }
+  }
+  static getDerivedStateFromError() { return { failed: true } }
+  render() {
+    if (this.state.failed) {
+      return <div className="absolute inset-0 bg-[#06060f]" />
+    }
+    return this.props.children
+  }
+}
 
 const STATE_CFG = {
   idle: {
@@ -35,11 +50,13 @@ export default function OrbScene({ orbState }) {
   const cfg = STATE_CFG[orbState] ?? STATE_CFG.idle
 
   return (
-    <div
-      className="absolute inset-0 transition-opacity duration-1000"
-      style={{ opacity: orbState === 'disconnected' ? 0.45 : 1 }}
-    >
-      <GradientOrb config={cfg} className="absolute inset-0" />
-    </div>
+    <OrbErrorBoundary>
+      <div
+        className="absolute inset-0 transition-opacity duration-1000 pointer-events-none"
+        style={{ opacity: orbState === 'disconnected' ? 0.45 : 1 }}
+      >
+        <GradientOrb config={cfg} className="absolute inset-0" />
+      </div>
+    </OrbErrorBoundary>
   )
 }
