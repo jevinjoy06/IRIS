@@ -33,13 +33,13 @@ module tb_mac_unit;
             @(posedge clk); #1;
             a = op_a; b = op_b; acc_in = acc; en = 1;
             @(posedge clk); #1;
-            en = 0;
-            @(posedge clk); #1;
+            // valid and acc_out are registered — check here while en is still high
             if (valid && acc_out === expected)
                 $display("PASS: %0d * %0d + %0d = %0d", op_a, op_b, acc, acc_out);
             else
                 $display("FAIL: %0d * %0d + %0d => got %0d, expected %0d",
                          op_a, op_b, acc, acc_out, expected);
+            en = 0;
         end
     endtask
 
@@ -47,10 +47,15 @@ module tb_mac_unit;
         rst_n = 0; en = 0; a = 0; b = 0; acc_in = 0;
         #20 rst_n = 1;
 
-        apply_mac(16'd3,  16'd4,  32'd0,  32'd12);  // 3*4+0   = 12
-        apply_mac(16'd3,  16'd4,  32'd5,  32'd17);  // 3*4+5   = 17
-        apply_mac(16'd0,  16'd99, 32'd7,  32'd7);   // 0*99+7  = 7
-        apply_mac(16'd255, 16'd255, 32'd0, 32'd65025); // 255*255 = 65025
+        // Basic unsigned
+        apply_mac(16'd3,   16'd4,   32'd0,  32'd12);    // 3*4+0    = 12
+        apply_mac(16'd3,   16'd4,   32'd5,  32'd17);    // 3*4+5    = 17
+        apply_mac(16'd0,   16'd99,  32'd7,  32'd7);     // 0*99+7   = 7
+        apply_mac(16'd255, 16'd255, 32'd0,  32'd65025); // 255*255  = 65025
+        // Signed (two's complement) — sign extension in accumulator
+        apply_mac(16'hFFFF, 16'd1,  32'd0,  32'hFFFFFFFF); // -1 * 1 + 0 = -1
+        apply_mac(16'hFFFF, 16'hFFFF, 32'd0, 32'd1);       // -1 * -1    = +1
+        apply_mac(16'd2,   16'hFFFE, 32'd0, 32'hFFFFFFFC); // 2 * -2     = -4
 
         $display("Testbench complete.");
         $finish;
