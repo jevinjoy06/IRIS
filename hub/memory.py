@@ -299,6 +299,20 @@ def list_conversations(limit: int = 20) -> list[dict]:
     return [dict(row) for row in rows]
 
 
+def get_recent_sessions(limit: int = 5) -> list[str]:
+    """Get the most recent conversation session IDs."""
+    with _connect() as conn:
+        rows = conn.execute(
+            """SELECT session_id
+               FROM turns
+               GROUP BY session_id
+               ORDER BY MAX(created_at) DESC
+               LIMIT ?""",
+            (limit,),
+        ).fetchall()
+    return [row["session_id"] for row in rows]
+
+
 def delete_conversation(session_id: str) -> int:
     """
     Delete all turns for a conversation session.

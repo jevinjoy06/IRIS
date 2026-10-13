@@ -1,5 +1,10 @@
 """Tool definitions (OpenAI/Ollama format) and dispatch."""
 import json
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from fastapi import WebSocket
+
 from hub.tools import file_system, web_search
 from hub import memory
 
@@ -63,7 +68,7 @@ TOOL_DEFINITIONS = [
 
 
 def dispatch(tool_name: str, tool_input: dict) -> str:
-    """Execute a tool and return a JSON string result."""
+    """Execute a tool and return a JSON string result (sync dispatch)."""
     try:
         if tool_name == "file_read":
             result = file_system.read_file(tool_input["path"])
@@ -90,3 +95,11 @@ def dispatch(tool_name: str, tool_input: dict) -> str:
         result = {"ok": False, "error": str(e)}
 
     return json.dumps(result)
+
+
+async def async_dispatch(tool_name: str, tool_input: dict, ws: "WebSocket") -> str:
+    """
+    Execute a tool and return a JSON string result (async dispatch).
+    """
+    result_json = dispatch(tool_name, tool_input)
+    return result_json

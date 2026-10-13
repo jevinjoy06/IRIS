@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from fastapi import WebSocket
 
 from hub import memory
-from hub.tools.registry import TOOL_DEFINITIONS, dispatch
+from hub.tools.registry import TOOL_DEFINITIONS, async_dispatch
 
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434/v1")
 MODEL = os.environ.get("OLLAMA_MODEL", "llama3.1:8b")
@@ -135,7 +135,7 @@ async def process_turn(user_text: str, ws: "WebSocket", session_id: str | None =
                     args = json.loads(tc["arguments"])
                 except json.JSONDecodeError:
                     args = {}
-                result = dispatch(tc["name"], args)
+                result = await async_dispatch(tc["name"], args, ws)
                 # Save tool call result
                 memory.save_turn(session_id, "tool", result, tool_name=tc["name"])
                 messages.append({
