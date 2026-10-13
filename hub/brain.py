@@ -153,7 +153,9 @@ async def process_turn(user_text: str, ws: "WebSocket", session_id: str | None =
     await ws.send_json({"type": "done"})
 
     full_response = "".join(full_response_parts)
+    # Save full assistant response
     if full_response.strip():
+        memory.save_turn(session_id, "assistant", full_response)
         await _extract_facts(user_text, full_response, client)
 
 

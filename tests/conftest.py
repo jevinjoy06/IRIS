@@ -1,13 +1,19 @@
-"""Pytest configuration and fixtures for IRIS Hub tests."""
+"""Pytest configuration and shared fixtures."""
 import sys
 import tempfile
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
-# Add the worktree root to sys.path so imports work
 WORKTREE_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(WORKTREE_ROOT))
+
+# Mock hardware dependencies that aren't installed in CI
+sys.modules["pyttsx3"] = MagicMock()
+sys.modules["webrtcvad"] = MagicMock()
+sys.modules["openwakeword"] = MagicMock()
+sys.modules["openwakeword.model"] = MagicMock()
 
 from hub import memory
 
@@ -18,25 +24,20 @@ def temp_db():
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
         db_path = Path(f.name)
 
-    # Set the memory module to use this temp db
     memory._DB_PATH = db_path
     memory.init_db()
 
     yield db_path
 
-    # Cleanup - reset the path first so no new connections are made
     memory._DB_PATH = None
 
-    # Wait a moment for any pending connections to close
     import time
     time.sleep(0.1)
 
-    # Try to remove the file
     if db_path.exists():
         try:
             db_path.unlink()
         except PermissionError:
-            # If still locked, that's okay - temp file will be cleaned up by OS
             pass
 
 

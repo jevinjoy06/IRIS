@@ -39,12 +39,12 @@ def init_db() -> None:
         """)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS turns (
-                id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id TEXT    NOT NULL,
-                role       TEXT    NOT NULL,
-                content    TEXT    NOT NULL,
-                tool_name  TEXT,
-                created_at TEXT    NOT NULL
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id  TEXT    NOT NULL,
+                role        TEXT    NOT NULL CHECK(role IN ('user','assistant','tool')),
+                content     TEXT    NOT NULL,
+                tool_name   TEXT,
+                created_at  TEXT    NOT NULL
             )
         """)
 
@@ -127,7 +127,10 @@ def build_memory_context(query: str) -> str:
     return "\n\n".join(parts)
 
 
+<<<<<<< HEAD
 # Session and turn management
+=======
+>>>>>>> origin/master
 def start_session() -> str:
     """Create a new conversation session and return its UUID."""
     return str(uuid.uuid4())
@@ -177,6 +180,7 @@ def get_session_turns(session_id: str, limit: int = 20) -> list[dict]:
             """SELECT id, role, content, tool_name, created_at
                FROM turns
                WHERE session_id = ?
+<<<<<<< HEAD
                ORDER BY created_at ASC
                LIMIT ?""",
             (session_id, limit),
@@ -276,11 +280,24 @@ def delete_fact(fact_id: int) -> bool:
 def list_conversations(limit: int = 20) -> list[dict]:
     """
     Get recent conversation sessions with metadata.
+=======
+               ORDER BY created_at DESC
+               LIMIT ?""",
+            (session_id, limit),
+        ).fetchall()
+    return [dict(row) for row in reversed(rows)]  # Reverse to chronological order
+
+
+def get_recent_sessions(limit: int = 5) -> list[str]:
+    """
+    Get the most recent conversation session IDs.
+>>>>>>> origin/master
 
     Args:
         limit: Max sessions to return
 
     Returns:
+<<<<<<< HEAD
         List of dicts with session_id, first_message, turn_count, created_at
     """
     with _connect() as conn:
@@ -292,10 +309,19 @@ def list_conversations(limit: int = 20) -> list[dict]:
                    MIN(created_at) as created_at
                FROM turns t
                GROUP BY session_id
+=======
+        List of session_ids
+    """
+    with _connect() as conn:
+        rows = conn.execute(
+            """SELECT DISTINCT session_id
+               FROM turns
+>>>>>>> origin/master
                ORDER BY created_at DESC
                LIMIT ?""",
             (limit,),
         ).fetchall()
+<<<<<<< HEAD
     return [dict(row) for row in rows]
 
 
@@ -323,3 +349,6 @@ def delete_conversation(session_id: str) -> int:
     with _connect() as conn:
         cur = conn.execute("DELETE FROM turns WHERE session_id = ?", (session_id,))
         return cur.rowcount
+=======
+    return [row["session_id"] for row in rows]
+>>>>>>> origin/master

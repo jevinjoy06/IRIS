@@ -1,1 +1,1 @@
-"""IRIS Hub test suite."""
+"""IRIS test suite."""
