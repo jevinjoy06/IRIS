@@ -1,5 +1,6 @@
 import json
 import sqlite3
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
@@ -34,6 +35,16 @@ def init_db() -> None:
                 access_count INTEGER NOT NULL DEFAULT 0,
                 last_accessed TEXT,
                 created_at   TEXT    NOT NULL
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS turns (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id  TEXT    NOT NULL,
+                role        TEXT    NOT NULL CHECK(role IN ('user','assistant','tool')),
+                content     TEXT    NOT NULL,
+                tool_name   TEXT,
+                created_at  TEXT    NOT NULL
             )
         """)
 
@@ -114,3 +125,80 @@ def build_memory_context(query: str) -> str:
     if relevant:
         parts.append("## Relevant facts\n" + "\n".join(f"- {f}" for f in relevant))
     return "\n\n".join(parts)
+
+
+def start_session() -> str:
+    """Create a new conversation session and return its UUID."""
+    return str(uuid.uuid4())
+
+
+def save_turn(
+    session_id: str,
+    role: str,
+    content: str,
+    tool_name: str | None = None,
+) -> int:
+    """
+    Save a conversation turn to the turns table.
+
+    Args:
+        session_id: UUID of the conversation session
+        role: 'user', 'assistant', or 'tool'
+        content: The message/result content
+        tool_name: If role=='tool', the tool name that was invoked
+
+    Returns:
+        The turn id
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    with _connect() as conn:
+        cur = conn.execute(
+            """INSERT INTO turns (session_id, role, content, tool_name, created_at)
+               VALUES (?, ?, ?, ?, ?)""",
+            (session_id, role, content, tool_name, now),
+        )
+        return cur.lastrowid
+
+
+def get_session_turns(session_id: str, limit: int = 20) -> list[dict]:
+    """
+    Get recent turns from a conversation session.
+
+    Args:
+        session_id: UUID of the session
+        limit: Max turns to return
+
+    Returns:
+        List of turn dicts with id, role, content, tool_name, created_at
+    """
+    with _connect() as conn:
+        rows = conn.execute(
+            """SELECT id, role, content, tool_name, created_at
+               FROM turns
+               WHERE session_id = ?
+               ORDER BY created_at DESC
+               LIMIT ?""",
+            (session_id, limit),
+        ).fetchall()
+    return [dict(row) for row in reversed(rows)]  # Reverse to chronological order
+
+
+def get_recent_sessions(limit: int = 5) -> list[str]:
+    """
+    Get the most recent conversation session IDs.
+
+    Args:
+        limit: Max sessions to return
+
+    Returns:
+        List of session_ids
+    """
+    with _connect() as conn:
+        rows = conn.execute(
+            """SELECT DISTINCT session_id
+               FROM turns
+               ORDER BY created_at DESC
+               LIMIT ?""",
+            (limit,),
+        ).fetchall()
+    return [row["session_id"] for row in rows]
