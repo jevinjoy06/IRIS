@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from fastapi import WebSocket
 
 from hub import memory
-from hub.tools.registry import TOOL_DEFINITIONS, dispatch
+from hub.tools.registry import TOOL_DEFINITIONS, async_dispatch
 
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434/v1")
 MODEL = os.environ.get("OLLAMA_MODEL", "llama3.1:8b")
@@ -42,6 +42,10 @@ def _make_client():
 
 async def process_turn(user_text: str, ws: "WebSocket") -> None:
     client = _make_client()
+
+    # Create or reuse session
+    session_id = memory.start_session()
+    memory.save_turn(session_id, "user", user_text)
 
     mem_context = memory.build_memory_context(user_text)
     system = SYSTEM_PROMPT + ("\n\n" + mem_context if mem_context else "")
@@ -113,7 +117,9 @@ async def process_turn(user_text: str, ws: "WebSocket") -> None:
                     args = json.loads(tc["arguments"])
                 except json.JSONDecodeError:
                     args = {}
-                result = dispatch(tc["name"], args)
+                result = await async_dispatch(tc["name"], args, ws)
+                # Save tool call result
+                memory.save_turn(session_id, "tool", result, tool_name=tc["name"])
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tc["id"],
@@ -126,7 +132,9 @@ async def process_turn(user_text: str, ws: "WebSocket") -> None:
     await ws.send_json({"type": "done"})
 
     full_response = "".join(full_response_parts)
+    # Save full assistant response
     if full_response.strip():
+        memory.save_turn(session_id, "assistant", full_response)
         await _extract_facts(user_text, full_response, client)
 
 
