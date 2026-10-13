@@ -18,5 +18,8 @@ Target: Basys 3 (Artix-7 XC7A35T). Replaces the software wake-word step in IRIS 
 - Neural net architecture for keyword spotting (size, quantization)
 - PCB order timing (fab/shipping lead time)
 
+## PCB toolchain
+Phase 3a PCB design uses **Adom Bridge** (Adom Industries MCP integration that drives KiCad, Altium Designer, or Autodesk Fusion 360 from Claude). Will use the KiCad bridge — free and open-source.
+
 ## IRIS link
 FPGA detects wake word → sends single byte over UART (Basys 3 onboard USB-to-serial, no external chip needed) → `voice/wake_listener.py` serial thread unblocks → normal conversation pipeline runs.

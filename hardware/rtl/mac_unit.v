@@ -15,8 +15,8 @@ module mac_unit #(
     output reg  [ACC_WIDTH-1:0]  acc_out,
     output reg                   valid
 );
-    wire [2*DATA_WIDTH-1:0] product;
-    assign product = a * b;
+    wire signed [2*DATA_WIDTH-1:0] product;
+    assign product = $signed(a) * $signed(b);
 
     always @(posedge clk) begin
         if (!rst_n) begin
