@@ -6,11 +6,17 @@ Target: Basys 3 (Artix-7 XC7A35T). Replaces the software wake-word step in IRIS 
 
 | Phase | What | Status |
 |---|---|---|
-| 1 | Single MAC unit (`rtl/mac_unit.v`) | Scaffolded |
-| 2 | Systolic array (chained MACs) | Not started |
+| 1 | Single MAC unit (`rtl/mac_unit.v`) | **Complete** — 7/7 tests passing |
+| 2 | Systolic array (chained MACs) | Next up |
 | 3 | Wake-word NN (2–3 layers) on real audio | Not started |
-| 3a | Custom audio front-end PCB (KiCad, MEMS mic → ADC/PDM) | Not started |
+| 3a | Custom audio front-end PCB (MEMS mic → ADC/PDM, Adom KiCad Bridge) | Not started |
 | 4 | IRIS UART integration + live demo | Not started |
+
+## Phase 1 implementation notes
+- Parameterized: DATA_WIDTH=16, ACC_WIDTH=32; targets DSP48E1 slices on Artix-7
+- Signed multiply via `$signed(a) * $signed(b)` — required for two's-complement correctness and DSP48E1 inference
+- Testbench: 4 unsigned + 3 signed cases; simulated with iverilog/vvp
+- VCD waveform output: `hardware/sim/tb_mac_unit.vcd`
 
 ## Open design decisions
 - Fixed-point number format (bit width, fractional bits) for MAC operands
