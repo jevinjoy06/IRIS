@@ -3,19 +3,21 @@ import StatusPill from './components/StatusPill'
 import OrbScene from './components/OrbScene'
 import InputBar from './components/InputBar'
 import TransientResponse from './components/TransientResponse'
-import HistoryDrawer from './components/HistoryDrawer'
+import UserEcho from './components/UserEcho'
+import LogPanel from './components/LogPanel'
 
 export default function App() {
-  const [messages, setMessages]     = useState([])
-  const [connected, setConnected]   = useState(false)
-  const [sending, setSending]       = useState(false)
-  const [streaming, setStreaming]   = useState(false)
-  const [historyOpen, setHistoryOpen] = useState(false)
+  const [messages, setMessages]       = useState([])
+  const [connected, setConnected]     = useState(false)
+  const [sending, setSending]         = useState(false)
+  const [streaming, setStreaming]     = useState(false)
+  const [logOpen, setLogOpen] = useState(false)
   const wsRef             = useRef(null)
   const streamingIdRef    = useRef(null)
   const reconnectTimerRef = useRef(null)
 
-  const hubUrl = window.irisConfig?.hubUrl || 'ws://localhost:7865/ws'
+  // Configure hub_url for remote connection. Update to your desktop LAN IP or tunnel URL.
+  const hubUrl = window.irisConfig?.hubUrl || 'ws://192.168.1.x:7865/ws'
 
   const orbState = !connected
     ? 'disconnected'
@@ -26,6 +28,7 @@ export default function App() {
         : 'idle'
 
   const lastAssistant = messages.filter(m => m.role === 'assistant').at(-1)
+  const lastUser      = messages.filter(m => m.role === 'user').at(-1)
 
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.CONNECTING) return
@@ -67,7 +70,7 @@ export default function App() {
       } else if (msg.type === 'tool_use') {
         setMessages(prev => [
           ...prev,
-          { id: crypto.randomUUID(), role: 'tool', text: msg.tool, streaming: false },
+          { id: crypto.randomUUID(), role: 'tool', text: msg.tool, streaming: false, ts: Date.now() },
         ])
       } else if (msg.type === 'done') {
         setStreaming(false)
@@ -110,8 +113,8 @@ export default function App() {
 
   const sendMessage = useCallback((text) => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return
-    const userMsg      = { id: crypto.randomUUID(), role: 'user', text, streaming: false }
-    const assistantMsg = { id: crypto.randomUUID(), role: 'assistant', text: '', streaming: true }
+    const userMsg      = { id: crypto.randomUUID(), role: 'user',      text, streaming: false, ts: Date.now() }
+    const assistantMsg = { id: crypto.randomUUID(), role: 'assistant', text: '', streaming: true, ts: Date.now() }
     streamingIdRef.current = assistantMsg.id
     setSending(true)
     setMessages(prev => [...prev, userMsg, assistantMsg])
@@ -120,31 +123,33 @@ export default function App() {
 
   return (
     <div className="relative h-screen bg-[#06060f] text-white overflow-hidden">
-      {/* Full-screen orb */}
       <OrbScene orbState={orbState} />
 
       <StatusPill connected={connected} onReconnect={reconnect} />
 
-      {/* Last IRIS response — fades in near orb, fades out after 5s */}
+      <UserEcho
+        key={lastUser?.id}
+        text={lastUser?.text ?? ''}
+        streaming={streaming}
+      />
+
       <TransientResponse
         key={lastAssistant?.id}
         text={lastAssistant?.text ?? ''}
         streaming={streaming}
       />
 
-      {/* Floating input bar */}
       <div className="absolute bottom-4 left-4 right-4 z-10">
         <InputBar
           onSend={sendMessage}
           disabled={!connected || sending}
-          onHistory={() => setHistoryOpen(true)}
+          onHistory={() => setLogOpen(true)}
         />
       </div>
 
-      {/* Slide-up history drawer */}
-      <HistoryDrawer
-        open={historyOpen}
-        onClose={() => setHistoryOpen(false)}
+      <LogPanel
+        open={logOpen}
+        onClose={() => setLogOpen(false)}
         messages={messages}
       />
     </div>

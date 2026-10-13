@@ -35,7 +35,7 @@ export default function InputBar({ onSend, disabled, onHistory }) {
         <button
           onClick={onHistory}
           className="mb-0.5 p-1.5 rounded-lg text-white/15 hover:text-white/45 transition-colors duration-200 shrink-0"
-          title="History"
+          title="Log"
         >
           <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
             <path d="M4 6h16M4 12h16M4 18h10" strokeLinecap="round" />
