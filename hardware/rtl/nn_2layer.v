@@ -18,20 +18,20 @@
 // x_in layout:
 //   x_in[r*DATA_WIDTH +: DATA_WIDTH] = x[r]
 //
-// FSM states and timing (default 4-4-2, 100 MHz):
+// FSM states and timing (default 40-64-2, 100 MHz):
 //   IDLE       → L1_LOAD (1 cy) → L1_STREAM (IN_FEATURES cy)
 //             → L1_DRAIN (≤2 cy, exits on l1_valid_out)
 //             → L2_LOAD (1 cy) → L2_STREAM (HIDDEN_SIZE cy)
 //             → L2_DRAIN (≤2 cy, exits on l2_valid_out)
 //             → OUTPUT (1 cy) → IDLE
-//   Total ≈ 15 cycles from start pulse to valid_out.
+//   Total ≈ 120 cycles from start pulse to valid_out.
 
 `default_nettype none
 
 module nn_2layer #(
-    parameter IN_FEATURES = 4,    // input vector length
-    parameter HIDDEN_SIZE = 4,    // hidden layer neurons
-    parameter CLASSES     = 2,    // output classes
+    parameter IN_FEATURES = 40,   // input vector length (log-mel features)
+    parameter HIDDEN_SIZE = 64,   // hidden layer neurons
+    parameter CLASSES     = 2,    // output classes (wake / not-wake)
     parameter DATA_WIDTH  = 16,   // signed weight/activation width
     parameter ACC_WIDTH   = 32    // accumulator width
 )(

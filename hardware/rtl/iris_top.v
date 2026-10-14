@@ -22,11 +22,13 @@
 `default_nettype none
 
 module iris_top #(
-    parameter DATA_WIDTH  = 16,
-    parameter IN_FEATURES = 4,
-    parameter HIDDEN_SIZE = 4,
-    parameter CLASSES     = 2,
-    parameter ACC_WIDTH   = 32
+    parameter DATA_WIDTH   = 16,
+    parameter IN_FEATURES  = 40,
+    parameter HIDDEN_SIZE  = 64,
+    parameter CLASSES      = 2,
+    parameter ACC_WIDTH    = 32,
+    parameter WEIGHT_FILE_W1 = "rtl/weights/w1.mem",
+    parameter WEIGHT_FILE_W2 = "rtl/weights/w2.mem"
 )(
     input  wire clk,
     input  wire rst_btn,     // active-high button
@@ -45,15 +47,29 @@ module iris_top #(
     wire [(IN_FEATURES*DATA_WIDTH)-1:0] x_in = act_in;
 
     // ------------------------------------------------------------------
-    // Stub weight matrices (zeros for now; would be loaded from memory/ROM)
+    // Weight matrices loaded from memory files at initialization
     // ------------------------------------------------------------------
+    reg signed [DATA_WIDTH-1:0] weights_l1_mem [0:IN_FEATURES*HIDDEN_SIZE-1];
+    reg signed [DATA_WIDTH-1:0] weights_l2_mem [0:HIDDEN_SIZE*CLASSES-1];
+
+    initial begin
+        $readmemh(WEIGHT_FILE_W1, weights_l1_mem);
+        $readmemh(WEIGHT_FILE_W2, weights_l2_mem);
+    end
+
+    // Flatten weight arrays into buses for systolic arrays
     wire [(IN_FEATURES*HIDDEN_SIZE*DATA_WIDTH)-1:0] weights_l1;
     wire [(HIDDEN_SIZE*CLASSES*DATA_WIDTH)-1:0]     weights_l2;
 
-    // For simulation/testing: set small non-zero values
-    // In practice, these would come from memory or be parameterized
-    assign weights_l1 = {(IN_FEATURES*HIDDEN_SIZE*DATA_WIDTH){1'b0}};
-    assign weights_l2 = {(HIDDEN_SIZE*CLASSES*DATA_WIDTH){1'b0}};
+    genvar i, j;
+    generate
+        for (i = 0; i < IN_FEATURES * HIDDEN_SIZE; i = i + 1) begin : gen_w1
+            assign weights_l1[i*DATA_WIDTH +: DATA_WIDTH] = weights_l1_mem[i];
+        end
+        for (j = 0; j < HIDDEN_SIZE * CLASSES; j = j + 1) begin : gen_w2
+            assign weights_l2[j*DATA_WIDTH +: DATA_WIDTH] = weights_l2_mem[j];
+        end
+    endgenerate
 
     // ------------------------------------------------------------------
     // Neural network inference
