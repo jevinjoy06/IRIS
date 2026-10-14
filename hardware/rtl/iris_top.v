@@ -57,19 +57,24 @@ module iris_top #(
         $readmemh(WEIGHT_FILE_W2, weights_l2_mem);
     end
 
-    // Flatten weight arrays into buses for systolic arrays
-    wire [(IN_FEATURES*HIDDEN_SIZE*DATA_WIDTH)-1:0] weights_l1;
-    wire [(HIDDEN_SIZE*CLASSES*DATA_WIDTH)-1:0]     weights_l2;
+    // Flatten weight arrays into buses for systolic arrays.
+    // Use always @(*) + integer loop rather than 2560-instance generate assigns.
+    // The generate approach triggers O(N^2) events in iverilog when $readmemh
+    // loads N elements (each element change re-evaluates all N pe_weight assigns).
+    // The always @(*) block coalesces to a single O(N) evaluation per delta cycle.
+    // Both forms synthesise identically (direct wires, no logic).
+    reg [(IN_FEATURES*HIDDEN_SIZE*DATA_WIDTH)-1:0] weights_l1;
+    reg [(HIDDEN_SIZE*CLASSES*DATA_WIDTH)-1:0]     weights_l2;
 
-    genvar i, j;
-    generate
-        for (i = 0; i < IN_FEATURES * HIDDEN_SIZE; i = i + 1) begin : gen_w1
-            assign weights_l1[i*DATA_WIDTH +: DATA_WIDTH] = weights_l1_mem[i];
-        end
-        for (j = 0; j < HIDDEN_SIZE * CLASSES; j = j + 1) begin : gen_w2
-            assign weights_l2[j*DATA_WIDTH +: DATA_WIDTH] = weights_l2_mem[j];
-        end
-    endgenerate
+    integer wi, wj;
+    always @(*) begin
+        for (wi = 0; wi < IN_FEATURES * HIDDEN_SIZE; wi = wi + 1)
+            weights_l1[wi*DATA_WIDTH +: DATA_WIDTH] = weights_l1_mem[wi];
+    end
+    always @(*) begin
+        for (wj = 0; wj < HIDDEN_SIZE * CLASSES; wj = wj + 1)
+            weights_l2[wj*DATA_WIDTH +: DATA_WIDTH] = weights_l2_mem[wj];
+    end
 
     // ------------------------------------------------------------------
     // Neural network inference
