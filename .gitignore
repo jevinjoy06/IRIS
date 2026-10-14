@@ -42,6 +42,29 @@ package-lock.json
 # Clients
 clients/*/config.json
 
+# Simulation outputs (iverilog)
+*.vcd
+*.vvp
+hardware/sim/mac_tb
+hardware/sim/sys_arr_check
+hardware/sim/final_check
+hardware/sim/test_compile
+hardware/sim/tb_pe
+hardware/sim/tb_systolic_array
+hardware/sim/tb_nn_2layer
+
+# KiCad auto-generated / lock files
+~*.lck
+kicad_shot_raw.json
+
+# Screenshot / UI preview artifacts
+*.png
+*.msixbundle
+
+# Dev tool dirs
+.claude/
+.playwright-mcp/
+
 # General
 .DS_Store
 Thumbs.db
