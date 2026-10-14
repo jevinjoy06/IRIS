@@ -18,6 +18,10 @@ set_property IOSTANDARD LVCMOS33 [get_ports uart_tx]
 #set_property PACKAGE_PIN B18    [get_ports uart_rx]
 #set_property IOSTANDARD LVCMOS33 [get_ports uart_rx]
 
+# --- LEDs (for debug output) ---
+set_property PACKAGE_PIN U16     [get_ports led_wake]
+set_property IOSTANDARD LVCMOS33 [get_ports led_wake]
+
 # --- 7-segment display (optional debug) ---
 # Segments (active-low)
 #set_property PACKAGE_PIN W7     [get_ports {seg[0]}]   # CA
