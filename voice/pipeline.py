@@ -59,6 +59,9 @@ class Pipeline:
         )
         self.tts_rate: int = cfg.get("tts_rate", 175)
         self.tts_volume: float = cfg.get("tts_volume", 0.9)
+        self.uart_port: str | None = cfg.get("uart_wake_port", None)
+        self.uart_baud: int = cfg.get("uart_wake_baud", 115200)
+        self._uart_listener = None
 
     def run(self) -> None:
         """Main entry point: initialize pipeline and run state machine."""
@@ -77,6 +80,13 @@ class Pipeline:
             f"at {SAMPLE_RATE} Hz, threshold={self.wake_word_threshold}"
         )
 
+        # Initialize UART wake listener if configured
+        if self.uart_port:
+            from voice.wake_listener import UARTWakeListener
+            self._uart_listener = UARTWakeListener(self.uart_port, self.uart_baud)
+            self._uart_listener.start()
+            print(f"[uart_wake] listening on {self.uart_port} at {self.uart_baud} baud")
+
         try:
             with sd.RawInputStream(
                 samplerate=SAMPLE_RATE,
@@ -87,6 +97,8 @@ class Pipeline:
         except KeyboardInterrupt:
             print("\n[pipeline] shutting down")
         finally:
+            if self._uart_listener:
+                self._uart_listener.stop()
             tts.stop()
 
     def _main_loop(
@@ -119,6 +131,12 @@ class Pipeline:
             if score > self.wake_word_threshold:
                 print(f"\n[wake] {self.wake_word_model} detected (score={score:.2f})")
                 tts.speak("Yes")  # Give audio feedback on wake
+                return PipelineState.ACTIVE
+
+            # Also check UART hardware trigger from FPGA
+            if self._uart_listener and self._uart_listener.triggered():
+                print("[wake] FPGA hardware trigger received")
+                tts.speak("Yes")
                 return PipelineState.ACTIVE
 
     def _active_loop(

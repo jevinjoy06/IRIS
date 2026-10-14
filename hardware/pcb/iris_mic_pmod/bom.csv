@@ -1,0 +1,6 @@
+Reference,Value,Footprint,Quantity
+R1,0R,Resistor_SMD,1
+C1,100nF,Capacitor_SMD,1
+C2,10uF,Capacitor_SMD,1
+J1,PMOD_2x6,Connector_PinHeader_2.54mm,1
+U1,SPH0645LM4H,Microphone,1

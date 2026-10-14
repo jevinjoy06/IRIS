@@ -1,0 +1,413 @@
+(kicad_sch (version 20230121) (generator "eeschema")
+
+  (uuid "a1000001-0000-0000-0000-000000000000")
+
+  (paper "A4")
+
+  (title_block
+    (title "IRIS MEMS Mic PMOD")
+    (date "2026-10-13")
+    (rev "v1.0")
+    (company "IRIS Project")
+    (comment 1 "")
+    (comment 2 "")
+    (comment 3 "")
+    (comment 4 "")
+  )
+
+  (lib_symbols
+    (symbol "Device:C"
+      (pin_numbers hide)
+      (pin_names (offset 0.254))
+      (property "Reference" "C" (at 0.635 2.54 0))
+      (property "Value" "C" (at 0.635 -2.54 0))
+      (property "Footprint" "" (at 0.9652 -3.81 0))
+      (property "Datasheet" "" (at 0 0 0))
+      (symbol "C_0_1"
+        (polyline
+          (pts (xy -2.032 -0.762) (xy 2.032 -0.762))
+          (stroke (width 0.508) (type default))
+          (fill (type none))
+        )
+        (polyline
+          (pts (xy -2.032 0.762) (xy 2.032 0.762))
+          (stroke (width 0.508) (type default))
+          (fill (type none))
+        )
+      )
+      (symbol "C_1_1"
+        (pin passive line (at 0 3.81 270) (length 3.048) (name "~" (effects (font (size 1.27 1.27) (thickness 0.15)))) (number "1" (effects (font (size 1.27 1.27) (thickness 0.15)))))
+        (pin passive line (at 0 -3.81 90) (length 3.048) (name "~" (effects (font (size 1.27 1.27) (thickness 0.15)))) (number "2" (effects (font (size 1.27 1.27) (thickness 0.15)))))
+      )
+    )
+
+    (symbol "Device:R"
+      (pin_numbers hide)
+      (pin_names (offset 0))
+      (property "Reference" "R" (at 2.032 0 90))
+      (property "Value" "R" (at 0 0 90))
+      (property "Footprint" "" (at -1.778 0 90))
+      (property "Datasheet" "" (at 0 0 0))
+      (symbol "R_0_1"
+        (rectangle (start -1.016 -2.54) (end 1.016 2.54) (stroke (width 0.254) (type default)) (fill (type none)))
+      )
+      (symbol "R_1_1"
+        (pin passive line (at 0 3.81 270) (length 1.27) (name "~" (effects (font (size 1.27 1.27) (thickness 0.15)))) (number "1" (effects (font (size 1.27 1.27) (thickness 0.15)))))
+        (pin passive line (at 0 -3.81 90) (length 1.27) (name "~" (effects (font (size 1.27 1.27) (thickness 0.15)))) (number "2" (effects (font (size 1.27 1.27) (thickness 0.15)))))
+      )
+    )
+
+    (symbol "power:+3V3"
+      (power)
+      (pin_names (offset 0))
+      (property "Reference" "#PWR" (at 0 -6.35 0))
+      (property "Value" "+3V3" (at 0 3.81 0))
+      (property "Footprint" "" (at 0 0 0))
+      (property "Datasheet" "" (at 0 0 0))
+      (symbol "+3V3_0_1"
+        (polyline
+          (pts (xy -0.762 1.27) (xy 0 2.54))
+          (stroke (width 0.254) (type default))
+          (fill (type none))
+        )
+        (polyline
+          (pts (xy 0 0) (xy 0 2.54))
+          (stroke (width 0) (type default))
+          (fill (type none))
+        )
+        (polyline
+          (pts (xy 0 2.54) (xy 0.762 1.27))
+          (stroke (width 0.254) (type default))
+          (fill (type none))
+        )
+      )
+      (symbol "+3V3_1_1"
+        (pin power_in line (at 0 0 270) (length 0) hide (name "+3V3" (effects (font (size 1.27 1.27) (thickness 0.15)))) (number "1" (effects (font (size 1.27 1.27) (thickness 0.15)))))
+      )
+    )
+
+    (symbol "power:GND"
+      (power)
+      (pin_names (offset 0))
+      (property "Reference" "#PWR" (at 0 -6.35 0))
+      (property "Value" "GND" (at 0 -3.81 0))
+      (property "Footprint" "" (at 0 -10.16 0))
+      (property "Datasheet" "" (at 0 0 0))
+      (symbol "GND_0_1"
+        (polyline
+          (pts (xy 0 0) (xy 0 -1.27) (xy 1.27 -1.27) (xy 0 -2.54) (xy -1.27 -1.27) (xy 0 -1.27))
+          (stroke (width 0) (type default))
+          (fill (type none))
+        )
+      )
+      (symbol "GND_1_1"
+        (pin power_in line (at 0 0 270) (length 0) hide (name "GND" (effects (font (size 1.27 1.27) (thickness 0.15)))) (number "1" (effects (font (size 1.27 1.27) (thickness 0.15)))))
+      )
+    )
+
+    (symbol "Connector_Generic:Conn_02x06_Odd_Even"
+      (pin_names (offset 1.016) hide)
+      (property "Reference" "J" (at 0 7.62 0))
+      (property "Value" "Conn_02x06_Odd_Even" (at 0 -7.62 0))
+      (property "Footprint" "Connector_PinHeader_2.54mm:PinHeader_2x06_P2.54mm_Vertical" (at 0 0 0))
+      (property "Datasheet" "" (at 0 0 0))
+      (symbol "Conn_02x06_Odd_Even_1_1"
+        (rectangle (start -1.27 -6.35) (end 1.27 6.35) (stroke (width 0.254) (type default)) (fill (type background)))
+        (pin passive line (at -5.08 6.35 0) (length 3.81) (name "Pin_1" (effects (font (size 1.27 1.27) (thickness 0.15)))) (number "1" (effects (font (size 1.27 1.27) (thickness 0.15)))))
+        (pin passive line (at 5.08 6.35 180) (length 3.81) (name "Pin_2" (effects (font (size 1.27 1.27) (thickness 0.15)))) (number "2" (effects (font (size 1.27 1.27) (thickness 0.15)))))
+        (pin passive line (at -5.08 3.81 0) (length 3.81) (name "Pin_3" (effects (font (size 1.27 1.27) (thickness 0.15)))) (number "3" (effects (font (size 1.27 1.27) (thickness 0.15)))))
+        (pin passive line (at 5.08 3.81 180) (length 3.81) (name "Pin_4" (effects (font (size 1.27 1.27) (thickness 0.15)))) (number "4" (effects (font (size 1.27 1.27) (thickness 0.15)))))
+        (pin passive line (at -5.08 1.27 0) (length 3.81) (name "Pin_5" (effects (font (size 1.27 1.27) (thickness 0.15)))) (number "5" (effects (font (size 1.27 1.27) (thickness 0.15)))))
+        (pin passive line (at 5.08 1.27 180) (length 3.81) (name "Pin_6" (effects (font (size 1.27 1.27) (thickness 0.15)))) (number "6" (effects (font (size 1.27 1.27) (thickness 0.15)))))
+        (pin passive line (at -5.08 -1.27 0) (length 3.81) (name "Pin_7" (effects (font (size 1.27 1.27) (thickness 0.15)))) (number "7" (effects (font (size 1.27 1.27) (thickness 0.15)))))
+        (pin passive line (at 5.08 -1.27 180) (length 3.81) (name "Pin_8" (effects (font (size 1.27 1.27) (thickness 0.15)))) (number "8" (effects (font (size 1.27 1.27) (thickness 0.15)))))
+        (pin passive line (at -5.08 -3.81 0) (length 3.81) (name "Pin_9" (effects (font (size 1.27 1.27) (thickness 0.15)))) (number "9" (effects (font (size 1.27 1.27) (thickness 0.15)))))
+        (pin passive line (at 5.08 -3.81 180) (length 3.81) (name "Pin_10" (effects (font (size 1.27 1.27) (thickness 0.15)))) (number "10" (effects (font (size 1.27 1.27) (thickness 0.15)))))
+        (pin passive line (at -5.08 -6.35 0) (length 3.81) (name "Pin_11" (effects (font (size 1.27 1.27) (thickness 0.15)))) (number "11" (effects (font (size 1.27 1.27) (thickness 0.15)))))
+        (pin passive line (at 5.08 -6.35 180) (length 3.81) (name "Pin_12" (effects (font (size 1.27 1.27) (thickness 0.15)))) (number "12" (effects (font (size 1.27 1.27) (thickness 0.15)))))
+      )
+    )
+
+    (symbol "Microphone:SPH0645LM4H"
+      (pin_names (offset 1.016))
+      (property "Reference" "U" (at 0 7.62 0))
+      (property "Value" "SPH0645LM4H" (at 0 -7.62 0))
+      (property "Footprint" "Microphone:SPH0645LM4H" (at 0 -10.16 0))
+      (property "Datasheet" "https://cdn-shop.adafruit.com/product-files/3421/SPH0645LM4H.pdf" (at 0 0 0))
+      (symbol "SPH0645LM4H_0_1"
+        (rectangle (start -3.81 6.35) (end 3.81 -6.35) (stroke (width 0.254) (type default)) (fill (type background)))
+      )
+      (symbol "SPH0645LM4H_1_1"
+        (pin passive line (at -6.35 5.08 0) (length 2.54) (name "GND" (effects (font (size 1.27 1.27) (thickness 0.15)))) (number "1" (effects (font (size 1.27 1.27) (thickness 0.15)))))
+        (pin input line (at -6.35 2.54 0) (length 2.54) (name "CLK" (effects (font (size 1.27 1.27) (thickness 0.15)))) (number "2" (effects (font (size 1.27 1.27) (thickness 0.15)))))
+        (pin power_in line (at -6.35 0 0) (length 2.54) (name "VDD" (effects (font (size 1.27 1.27) (thickness 0.15)))) (number "3" (effects (font (size 1.27 1.27) (thickness 0.15)))))
+        (pin input line (at -6.35 -2.54 0) (length 2.54) (name "SEL" (effects (font (size 1.27 1.27) (thickness 0.15)))) (number "4" (effects (font (size 1.27 1.27) (thickness 0.15)))))
+        (pin output line (at 6.35 2.54 180) (length 2.54) (name "DATA" (effects (font (size 1.27 1.27) (thickness 0.15)))) (number "5" (effects (font (size 1.27 1.27) (thickness 0.15)))))
+        (pin input line (at 6.35 -2.54 180) (length 2.54) (name "WS" (effects (font (size 1.27 1.27) (thickness 0.15)))) (number "6" (effects (font (size 1.27 1.27) (thickness 0.15)))))
+      )
+    )
+  )
+
+  (wire (pts (xy 136.35 92.54) (xy 138 92.54)) (stroke (width 0) (type default)) (uuid "a1010001-0000-0000-0000-000000000000"))
+  (wire (pts (xy 123.65 92.54) (xy 121 92.54)) (stroke (width 0) (type default)) (uuid "a1010002-0000-0000-0000-000000000000"))
+  (wire (pts (xy 136.35 87.46) (xy 138 87.46)) (stroke (width 0) (type default)) (uuid "a1010003-0000-0000-0000-000000000000"))
+  (wire (pts (xy 108 78.81) (xy 123.65 90.00)) (stroke (width 0) (type default)) (uuid "a1010004-0000-0000-0000-000000000000"))
+  (wire (pts (xy 108 71.19) (xy 123.65 95.08)) (stroke (width 0) (type default)) (uuid "a1010005-0000-0000-0000-000000000000"))
+  (wire (pts (xy 108 108.81) (xy 123.65 90.00)) (stroke (width 0) (type default)) (uuid "a1010006-0000-0000-0000-000000000000"))
+  (wire (pts (xy 108 101.19) (xy 123.65 95.08)) (stroke (width 0) (type default)) (uuid "a1010007-0000-0000-0000-000000000000"))
+  (wire (pts (xy 109.19 87.46) (xy 113 87.46)) (stroke (width 0) (type default)) (uuid "a1010008-0000-0000-0000-000000000000"))
+  (wire (pts (xy 116.81 87.46) (xy 123.65 87.46)) (stroke (width 0) (type default)) (uuid "a1010009-0000-0000-0000-000000000000"))
+
+  (global_label "I2S_DATA" (shape bidir) (at 138 92.54 0) (fields_autoplaced) (effects (font (size 1.27 1.27) (thickness 0.15)) (justify left)) (uuid "a1020001-0000-0000-0000-000000000000"))
+  (global_label "I2S_CLK" (shape bidir) (at 121 92.54 180) (fields_autoplaced) (effects (font (size 1.27 1.27) (thickness 0.15)) (justify right)) (uuid "a1020002-0000-0000-0000-000000000000"))
+  (global_label "I2S_WS" (shape bidir) (at 138 87.46 0) (fields_autoplaced) (effects (font (size 1.27 1.27) (thickness 0.15)) (justify left)) (uuid "a1020003-0000-0000-0000-000000000000"))
+
+  (label "L_R" (at 109.19 87.46 0) (fields_autoplaced) (effects (font (size 1.27 1.27) (thickness 0.15)) (justify left bottom)) (uuid "a1030001-0000-0000-0000-000000000000"))
+
+  (no_connect (at 185.08 96.35) (uuid "a1040001-0000-0000-0000-000000000000"))
+  (no_connect (at 185.08 93.81) (uuid "a1040002-0000-0000-0000-000000000000"))
+  (no_connect (at 185.08 91.27) (uuid "a1040003-0000-0000-0000-000000000000"))
+  (no_connect (at 185.08 88.73) (uuid "a1040004-0000-0000-0000-000000000000"))
+  (no_connect (at 174.92 91.27) (uuid "a1040005-0000-0000-0000-000000000000"))
+  (no_connect (at 174.92 88.73) (uuid "a1040006-0000-0000-0000-000000000000"))
+
+  (symbol (lib_id "Microphone:SPH0645LM4H") (at 130 90 0) (unit 1) (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced yes)
+    (uuid "a1000002-0000-0000-0000-000000000000")
+    (property "Reference" "U1" (at 130 82.55 0)
+      (effects (font (size 1.27 1.27))))
+    (property "Value" "SPH0645LM4H" (at 130 97.79 0)
+      (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Microphone:SPH0645LM4H" (at 130 100.33 0)
+      (effects (font (size 1.27 1.27)) (hide yes)))
+    (property "Datasheet" "https://cdn-shop.adafruit.com/product-files/3421/SPH0645LM4H.pdf" (at 130 90 0)
+      (effects (font (size 1.27 1.27)) (hide yes)))
+    (pin "1" (uuid "a1000002-0000-0000-0000-000000000001"))
+    (pin "2" (uuid "a1000002-0000-0000-0000-000000000002"))
+    (pin "3" (uuid "a1000002-0000-0000-0000-000000000003"))
+    (pin "4" (uuid "a1000002-0000-0000-0000-000000000004"))
+    (pin "5" (uuid "a1000002-0000-0000-0000-000000000005"))
+    (pin "6" (uuid "a1000002-0000-0000-0000-000000000006"))
+    (instances
+      (project "iris_mic_pmod"
+        (path "/a1000001-0000-0000-0000-000000000000"
+          (reference "U1") (unit 1)
+        )
+      )
+    )
+  )
+
+  (symbol (lib_id "Device:C") (at 108 75 0) (unit 1) (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced yes)
+    (uuid "a1000003-0000-0000-0000-000000000000")
+    (property "Reference" "C1" (at 109.27 73.025 0)
+      (effects (font (size 1.27 1.27))))
+    (property "Value" "100nF" (at 109.27 77.565 0)
+      (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Capacitor_SMD:C_0402_1005Metric" (at 108 75 0)
+      (effects (font (size 1.27 1.27)) (hide yes)))
+    (property "Datasheet" "" (at 108 75 0)
+      (effects (font (size 1.27 1.27)) (hide yes)))
+    (pin "1" (uuid "a1000003-0000-0000-0000-000000000001"))
+    (pin "2" (uuid "a1000003-0000-0000-0000-000000000002"))
+    (instances
+      (project "iris_mic_pmod"
+        (path "/a1000001-0000-0000-0000-000000000000"
+          (reference "C1") (unit 1)
+        )
+      )
+    )
+  )
+
+  (symbol (lib_id "Device:C") (at 108 105 0) (unit 1) (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced yes)
+    (uuid "a1000004-0000-0000-0000-000000000000")
+    (property "Reference" "C2" (at 109.27 103.025 0)
+      (effects (font (size 1.27 1.27))))
+    (property "Value" "10uF" (at 109.27 107.565 0)
+      (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Capacitor_SMD:C_0402_1005Metric" (at 108 105 0)
+      (effects (font (size 1.27 1.27)) (hide yes)))
+    (property "Datasheet" "" (at 108 105 0)
+      (effects (font (size 1.27 1.27)) (hide yes)))
+    (pin "1" (uuid "a1000004-0000-0000-0000-000000000001"))
+    (pin "2" (uuid "a1000004-0000-0000-0000-000000000002"))
+    (instances
+      (project "iris_mic_pmod"
+        (path "/a1000001-0000-0000-0000-000000000000"
+          (reference "C2") (unit 1)
+        )
+      )
+    )
+  )
+
+  (symbol (lib_id "Device:R") (at 113 87.46 90) (unit 1) (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced yes)
+    (uuid "a1000005-0000-0000-0000-000000000000")
+    (property "Reference" "R1" (at 113 85.09 90)
+      (effects (font (size 1.27 1.27))))
+    (property "Value" "0R" (at 113 89.89 90)
+      (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Resistor_SMD:R_0402_1005Metric" (at 113 87.46 90)
+      (effects (font (size 1.27 1.27)) (hide yes)))
+    (property "Datasheet" "" (at 113 87.46 0)
+      (effects (font (size 1.27 1.27)) (hide yes)))
+    (pin "1" (uuid "a1000005-0000-0000-0000-000000000001"))
+    (pin "2" (uuid "a1000005-0000-0000-0000-000000000002"))
+    (instances
+      (project "iris_mic_pmod"
+        (path "/a1000001-0000-0000-0000-000000000000"
+          (reference "R1") (unit 1)
+        )
+      )
+    )
+  )
+
+  (symbol (lib_id "Connector_Generic:Conn_02x06_Odd_Even") (at 180 90 0) (unit 1) (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced yes)
+    (uuid "a1000006-0000-0000-0000-000000000000")
+    (property "Reference" "J1" (at 180 97.79 0)
+      (effects (font (size 1.27 1.27))))
+    (property "Value" "Conn_02x06_Odd_Even" (at 180 82.55 0)
+      (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Connector_PinHeader_2.54mm:PinHeader_2x06_P2.54mm_Vertical" (at 180 90 0)
+      (effects (font (size 1.27 1.27)) (hide yes)))
+    (property "Datasheet" "" (at 180 90 0)
+      (effects (font (size 1.27 1.27)) (hide yes)))
+    (pin "1" (uuid "a1000006-0000-0000-0000-000000000001"))
+    (pin "2" (uuid "a1000006-0000-0000-0000-000000000002"))
+    (pin "3" (uuid "a1000006-0000-0000-0000-000000000003"))
+    (pin "4" (uuid "a1000006-0000-0000-0000-000000000004"))
+    (pin "5" (uuid "a1000006-0000-0000-0000-000000000005"))
+    (pin "6" (uuid "a1000006-0000-0000-0000-000000000006"))
+    (pin "7" (uuid "a1000006-0000-0000-0000-000000000007"))
+    (pin "8" (uuid "a1000006-0000-0000-0000-000000000008"))
+    (pin "9" (uuid "a1000006-0000-0000-0000-000000000009"))
+    (pin "10" (uuid "a1000006-0000-0000-0000-000000000010"))
+    (pin "11" (uuid "a1000006-0000-0000-0000-000000000011"))
+    (pin "12" (uuid "a1000006-0000-0000-0000-000000000012"))
+    (instances
+      (project "iris_mic_pmod"
+        (path "/a1000001-0000-0000-0000-000000000000"
+          (reference "J1") (unit 1)
+        )
+      )
+    )
+  )
+
+  (symbol (lib_id "power:+3V3") (at 123.65 88.73 0) (unit 1) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "a1000007-0000-0000-0000-000000000000")
+    (property "Reference" "#PWR01" (at 123.65 86.623 0) (hide yes)
+      (effects (font (size 1.27 1.27))))
+    (property "Value" "+3V3" (at 123.65 92.71 0)
+      (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 123.65 88.73 0)
+      (effects (font (size 1.27 1.27)) (hide yes)))
+    (property "Datasheet" "" (at 123.65 88.73 0)
+      (effects (font (size 1.27 1.27)) (hide yes)))
+    (pin "1" (uuid "a1000007-0000-0000-0000-000000000001"))
+    (instances
+      (project "iris_mic_pmod"
+        (path "/a1000001-0000-0000-0000-000000000000"
+          (reference "#PWR01") (unit 1)
+        )
+      )
+    )
+  )
+
+  (symbol (lib_id "power:GND") (at 123.65 96.35 0) (unit 1) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "a1000008-0000-0000-0000-000000000000")
+    (property "Reference" "#PWR02" (at 123.65 102.619 0) (hide yes)
+      (effects (font (size 1.27 1.27))))
+    (property "Value" "GND" (at 123.65 100.33 0)
+      (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 123.65 96.35 0)
+      (effects (font (size 1.27 1.27)) (hide yes)))
+    (property "Datasheet" "" (at 123.65 96.35 0)
+      (effects (font (size 1.27 1.27)) (hide yes)))
+    (pin "1" (uuid "a1000008-0000-0000-0000-000000000001"))
+    (instances
+      (project "iris_mic_pmod"
+        (path "/a1000001-0000-0000-0000-000000000000"
+          (reference "#PWR02") (unit 1)
+        )
+      )
+    )
+  )
+
+  (symbol (lib_id "power:+3V3") (at 174.92 83.65 0) (unit 1) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "a1000009-0000-0000-0000-000000000000")
+    (property "Reference" "#PWR03" (at 174.92 81.543 0) (hide yes)
+      (effects (font (size 1.27 1.27))))
+    (property "Value" "+3V3" (at 174.92 87.63 0)
+      (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 174.92 83.65 0)
+      (effects (font (size 1.27 1.27)) (hide yes)))
+    (property "Datasheet" "" (at 174.92 83.65 0)
+      (effects (font (size 1.27 1.27)) (hide yes)))
+    (pin "1" (uuid "a1000009-0000-0000-0000-000000000001"))
+    (instances
+      (project "iris_mic_pmod"
+        (path "/a1000001-0000-0000-0000-000000000000"
+          (reference "#PWR03") (unit 1)
+        )
+      )
+    )
+  )
+
+  (symbol (lib_id "power:+3V3") (at 185.08 83.65 0) (unit 1) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "a1000010-0000-0000-0000-000000000000")
+    (property "Reference" "#PWR04" (at 185.08 81.543 0) (hide yes)
+      (effects (font (size 1.27 1.27))))
+    (property "Value" "+3V3" (at 185.08 87.63 0)
+      (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 185.08 83.65 0)
+      (effects (font (size 1.27 1.27)) (hide yes)))
+    (property "Datasheet" "" (at 185.08 83.65 0)
+      (effects (font (size 1.27 1.27)) (hide yes)))
+    (pin "1" (uuid "a1000010-0000-0000-0000-000000000001"))
+    (instances
+      (project "iris_mic_pmod"
+        (path "/a1000001-0000-0000-0000-000000000000"
+          (reference "#PWR04") (unit 1)
+        )
+      )
+    )
+  )
+
+  (symbol (lib_id "power:GND") (at 174.92 86.19 0) (unit 1) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "a1000011-0000-0000-0000-000000000000")
+    (property "Reference" "#PWR05" (at 174.92 92.459 0) (hide yes)
+      (effects (font (size 1.27 1.27))))
+    (property "Value" "GND" (at 174.92 90.17 0)
+      (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 174.92 86.19 0)
+      (effects (font (size 1.27 1.27)) (hide yes)))
+    (property "Datasheet" "" (at 174.92 86.19 0)
+      (effects (font (size 1.27 1.27)) (hide yes)))
+    (pin "1" (uuid "a1000011-0000-0000-0000-000000000001"))
+    (instances
+      (project "iris_mic_pmod"
+        (path "/a1000001-0000-0000-0000-000000000000"
+          (reference "#PWR05") (unit 1)
+        )
+      )
+    )
+  )
+
+  (symbol (lib_id "power:GND") (at 185.08 86.19 0) (unit 1) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "a1000012-0000-0000-0000-000000000000")
+    (property "Reference" "#PWR06" (at 185.08 92.459 0) (hide yes)
+      (effects (font (size 1.27 1.27))))
+    (property "Value" "GND" (at 185.08 90.17 0)
+      (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 185.08 86.19 0)
+      (effects (font (size 1.27 1.27)) (hide yes)))
+    (property "Datasheet" "" (at 185.08 86.19 0)
+      (effects (font (size 1.27 1.27)) (hide yes)))
+    (pin "1" (uuid "a1000012-0000-0000-0000-000000000001"))
+    (instances
+      (project "iris_mic_pmod"
+        (path "/a1000001-0000-0000-0000-000000000000"
+          (reference "#PWR06") (unit 1)
+        )
+      )
+    )
+  )
+
+)

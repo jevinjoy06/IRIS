@@ -21,6 +21,9 @@ numpy
 # Hub WebSocket connection
 websockets
 
+# UART serial communication (FPGA wake trigger)
+pyserial>=3.5
+
 # System tray
 pystray
 Pillow

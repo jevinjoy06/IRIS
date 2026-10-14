@@ -9,5 +9,8 @@
   "tts_rate": 175,
   "tts_volume": 0.9,
   "keras_backend": "torch",
-  "iris_projects_dir": "iris_projects"
+  "iris_projects_dir": "iris_projects",
+  "_comment_uart": "Set uart_wake_port to the COM port of the Basys 3 (e.g. COM3 on Windows, /dev/ttyUSB0 on Linux). Leave null to use software wake word only.",
+  "uart_wake_port": null,
+  "uart_wake_baud": 115200
 }
