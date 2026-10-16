@@ -35,6 +35,10 @@ vivado*/
 hub/.env
 *.db
 
+# Wake word training data (generated audio, not source-controlled)
+voice/training/data/
+voice/models/
+
 # Node
 node_modules/
 package-lock.json

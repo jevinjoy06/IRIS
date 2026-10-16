@@ -1,0 +1,9 @@
+# Extra deps for wake-word training (on top of voice/requirements.txt)
+# Core voice deps (torch, numpy, openwakeword, sounddevice, pyttsx3)
+# are already in voice/requirements.txt.
+
+# Audio resampling
+scipy>=1.10
+
+# ONNX model validation
+onnx>=1.14

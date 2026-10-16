@@ -14,6 +14,7 @@ Dependencies:
 """
 import asyncio
 import json
+import os
 import time
 from enum import Enum
 
@@ -52,6 +53,8 @@ class Pipeline:
         self.cfg = cfg
         self.hub_url: str = cfg.get("hub_url", "ws://localhost:7865/ws")
         self.wake_word_model: str = cfg.get("wake_word_model", "hey_jarvis")
+        # OWW uses the filename stem as prediction_buffer key (e.g. "iris" from "iris.onnx")
+        self._wake_word_key: str = os.path.basename(self.wake_word_model).split(".")[0]
         self.wake_word_threshold: float = cfg.get("wake_word_threshold", 0.5)
         self.active_session_timeout: int = cfg.get("active_session_timeout_seconds", 30)
         self.stop_phrases: list[str] = cfg.get(
@@ -59,6 +62,7 @@ class Pipeline:
         )
         self.tts_rate: int = cfg.get("tts_rate", 175)
         self.tts_volume: float = cfg.get("tts_volume", 0.9)
+        self.tts_voice: str = cfg.get("tts_voice", "af_heart")
         self.uart_port: str | None = cfg.get("uart_wake_port", None)
         self.uart_baud: int = cfg.get("uart_wake_baud", 115200)
         self._uart_listener = None
@@ -73,12 +77,16 @@ class Pipeline:
         )
         vad = webrtcvad.Vad(3)  # aggressiveness 0–3; 3 = most aggressive
         transcriber = Transcriber()
-        tts = TTS(rate=self.tts_rate, volume=self.tts_volume)
+        tts = TTS(rate=self.tts_rate, volume=self.tts_volume, voice=self.tts_voice)
 
         print(
             f"IRIS voice — openWakeWord '{self.wake_word_model}' "
             f"at {SAMPLE_RATE} Hz, threshold={self.wake_word_threshold}"
         )
+
+        # Warm up Moonshine so first transcription has no cold-start delay
+        print("[transcribe] warming up Moonshine...", end=" ", flush=True)
+        transcriber.warmup()
 
         # Initialize UART wake listener if configured
         if self.uart_port:
@@ -93,7 +101,7 @@ class Pipeline:
                 channels=CHANNELS,
                 dtype="int16",
             ) as stream:
-                self._main_loop(stream, oww_model, vad, transcriber, tts)
+                asyncio.run(self._main_loop(stream, oww_model, vad, transcriber, tts))
         except KeyboardInterrupt:
             print("\n[pipeline] shutting down")
         finally:
@@ -101,7 +109,7 @@ class Pipeline:
                 self._uart_listener.stop()
             tts.stop()
 
-    def _main_loop(
+    async def _main_loop(
         self, stream, oww_model, vad, transcriber: Transcriber, tts: TTS
     ) -> None:
         """Run state machine: SLEEPING ↔ ACTIVE."""
@@ -111,7 +119,7 @@ class Pipeline:
             if state == PipelineState.SLEEPING:
                 state = self._sleeping_loop(stream, oww_model, vad, transcriber, tts)
             elif state == PipelineState.ACTIVE:
-                state = self._active_loop(stream, vad, transcriber, tts)
+                state = await self._active_loop(stream, vad, transcriber, tts)
 
     def _sleeping_loop(
         self, stream, oww_model, vad, transcriber: Transcriber, tts: TTS
@@ -126,7 +134,7 @@ class Pipeline:
 
             # Feed to openWakeWord model
             oww_model.predict(audio_chunk)
-            score = oww_model.prediction_buffer[self.wake_word_model][-1]
+            score = oww_model.prediction_buffer[self._wake_word_key][-1]
 
             if score > self.wake_word_threshold:
                 print(f"\n[wake] {self.wake_word_model} detected (score={score:.2f})")
@@ -139,53 +147,59 @@ class Pipeline:
                 tts.speak("Yes")
                 return PipelineState.ACTIVE
 
-    def _active_loop(
+    async def _active_loop(
         self, stream, vad, transcriber: Transcriber, tts: TTS
     ) -> PipelineState:
-        """Active listening mode: record utterances in a loop.
+        """Active listening mode: hold one WS connection for the whole session.
 
         Returns SLEEPING on: stop phrase, timeout, or hub error.
         """
-        session_start = time.time()
+        import websockets  # type: ignore
+
         last_speech_time = time.time()
 
-        while True:
-            # Check timeout: 30 s of no new speech
-            if time.time() - last_speech_time > self.active_session_timeout:
-                print("[session] timeout (30s no speech)")
-                tts.speak("Okay, going back to sleep")
-                return PipelineState.SLEEPING
+        try:
+            async with websockets.connect(self.hub_url, ping_interval=None) as ws:
+                print("[session] connected to hub")
+                while True:
+                    # Check timeout: 30 s of no new speech
+                    if time.time() - last_speech_time > self.active_session_timeout:
+                        print("[session] timeout (30s no speech)")
+                        tts.speak("Okay, going back to sleep")
+                        return PipelineState.SLEEPING
 
-            # Record one utterance with VAD
-            audio = self._record_utterance(stream, vad)
-            if audio is None:
-                # VAD timeout (5 s no speech detected)
-                print("[vad] nothing heard")
-                continue
+                    # Record one utterance with VAD
+                    audio = self._record_utterance(stream, vad)
+                    if audio is None:
+                        # VAD timeout (5 s no speech detected)
+                        continue
 
-            last_speech_time = time.time()
+                    last_speech_time = time.time()
 
-            # Transcribe
-            print("[transcribe] processing…", end=" ", flush=True)
-            text = transcriber.transcribe(audio).strip()
-            if not text:
-                print("(empty transcript)")
-                continue
-            print(f'"{text}"')
+                    # Transcribe
+                    print("[transcribe] processing…", end=" ", flush=True)
+                    text = transcriber.transcribe(audio).strip()
+                    if not text:
+                        print("(empty transcript)")
+                        continue
+                    print(f'"{text}"')
 
-            # Check for stop phrase
-            text_lower = text.lower().strip()
-            if any(phrase in text_lower for phrase in self.stop_phrases):
-                print("[session] stop phrase detected")
-                tts.speak("Goodbye")
-                return PipelineState.SLEEPING
+                    # Check for stop phrase
+                    text_lower = text.lower().strip()
+                    if any(phrase in text_lower for phrase in self.stop_phrases):
+                        print("[session] stop phrase detected")
+                        tts.speak("Goodbye")
+                        return PipelineState.SLEEPING
 
-            # Send to hub and collect response
-            response_ok = asyncio.run(self._send_and_speak(text, tts))
-            if not response_ok:
-                # Hub error
-                print("[session] hub error, returning to sleep")
-                return PipelineState.SLEEPING
+                    # Send to hub and collect response over the shared connection
+                    ok = await self._send_and_speak(text, tts, ws)
+                    if not ok:
+                        print("[session] hub error, returning to sleep")
+                        return PipelineState.SLEEPING
+
+        except Exception as exc:
+            print(f"[session] WS error: {exc}")
+            return PipelineState.SLEEPING
 
     def _record_utterance(self, stream, vad) -> "np.ndarray | None":
         """Record until post-speech silence; return float32 audio or None."""
@@ -219,34 +233,30 @@ class Pipeline:
         audio_i16 = np.concatenate(frames)
         return audio_i16.astype(np.float32) / 32_768.0
 
-    async def _send_and_speak(self, text: str, tts: TTS) -> bool:
-        """Send text to hub, stream response, speak aloud. Return success."""
-        import websockets  # type: ignore
-
+    async def _send_and_speak(self, text: str, tts: TTS, ws) -> bool:
+        """Send text to hub over shared WS, stream response, speak aloud. Return success."""
         print("IRIS:", end=" ", flush=True)
         try:
-            async with websockets.connect(self.hub_url) as ws:
-                await ws.send(json.dumps({"type": "message", "text": text}))
-                response_text = ""
+            await ws.send(json.dumps({"type": "message", "text": text}))
+            response_text = ""
 
-                async for raw_msg in ws:
-                    msg = json.loads(raw_msg)
-                    if msg["type"] == "token":
-                        token = msg["text"]
-                        print(token, end="", flush=True)
-                        response_text += token
-                    elif msg["type"] == "error":
-                        print(f"\n[hub error] {msg.get('text', '')}")
-                        return False
-                    elif msg["type"] == "done":
-                        print()
-                        break
+            async for raw_msg in ws:
+                msg = json.loads(raw_msg)
+                if msg["type"] == "token":
+                    token = msg["text"]
+                    print(token, end="", flush=True)
+                    response_text += token
+                elif msg["type"] == "error":
+                    print(f"\n[hub error] {msg.get('text', '')}")
+                    return False
+                elif msg["type"] == "done":
+                    print()
+                    break
 
-                # Speak the collected response in background
-                if response_text:
-                    tts.speak(response_text)
+            if response_text:
+                tts.speak(response_text)
 
-                return True
+            return True
         except Exception as exc:
-            print(f"\n[voice] connection error: {exc}")
+            print(f"\n[voice] send error: {exc}")
             return False

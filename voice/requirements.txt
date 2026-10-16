@@ -8,8 +8,10 @@ useful-moonshine==20241016
 # VAD — prebuilt wheels; webrtcvad needs MSVC and fails without Build Tools
 webrtcvad-wheels
 
-# Text-to-speech — pyttsx3 speaks responses aloud in background thread
-pyttsx3
+# Text-to-speech — Kokoro ONNX (af_heart voice); model files in voice/models/
+# Download kokoro-v1.0.onnx + voices-v1.0.bin from:
+# https://github.com/thewh1teagle/kokoro-onnx/releases
+kokoro-onnx
 
 # ML backend — moonshine's keras dependency; set KERAS_BACKEND=torch to avoid TensorFlow
 torch

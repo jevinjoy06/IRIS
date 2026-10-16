@@ -1,6 +1,8 @@
-"""Tests for voice/tts.py — TTS class."""
+"""Tests for voice/tts.py — TTS class (Kokoro ONNX backend)."""
+import sys
 import threading
 import time
+import types
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -8,221 +10,212 @@ import pytest
 from voice.tts import TTS
 
 
+def _make_tts(**kwargs) -> TTS:
+    """Create a TTS instance with dummy model paths (no real files needed)."""
+    return TTS(
+        model_path="/fake/kokoro.onnx",
+        voices_path="/fake/voices.bin",
+        **kwargs,
+    )
+
+
 class TestTTSConstructor:
     """Test TTS constructor and initialization."""
 
-    @patch("pyttsx3.init")
-    def test_constructor_calls_pyttsx3_init(self, mock_init):
-        """Constructor should call pyttsx3.init()."""
-        mock_engine = MagicMock()
-        mock_init.return_value = mock_engine
+    def test_default_speed_is_1x(self):
+        """Default rate=175 should produce speed=1.0."""
+        tts = _make_tts()
+        assert tts._speed == pytest.approx(1.0)
 
-        TTS()
+    def test_custom_rate_maps_to_speed(self):
+        """rate=350 → speed=2.0."""
+        tts = _make_tts(rate=350)
+        assert tts._speed == pytest.approx(2.0)
 
-        mock_init.assert_called_once()
+    def test_default_volume(self):
+        tts = _make_tts()
+        assert tts._volume == pytest.approx(0.9)
 
-    @patch("pyttsx3.init")
-    def test_constructor_sets_default_rate(self, mock_init):
-        """Constructor should set default rate to 175 wpm."""
-        mock_engine = MagicMock()
-        mock_init.return_value = mock_engine
+    def test_custom_volume(self):
+        tts = _make_tts(volume=0.5)
+        assert tts._volume == pytest.approx(0.5)
 
-        TTS()
+    def test_default_voice_is_af_heart(self):
+        tts = _make_tts()
+        assert tts._voice == "af_heart"
 
-        mock_engine.setProperty.assert_any_call("rate", 175)
+    def test_custom_voice(self):
+        tts = _make_tts(voice="am_fenrir")
+        assert tts._voice == "am_fenrir"
 
-    @patch("pyttsx3.init")
-    def test_constructor_sets_default_volume(self, mock_init):
-        """Constructor should set default volume to 0.9."""
-        mock_engine = MagicMock()
-        mock_init.return_value = mock_engine
-
-        TTS()
-
-        mock_engine.setProperty.assert_any_call("volume", 0.9)
-
-    @patch("pyttsx3.init")
-    def test_constructor_sets_custom_rate(self, mock_init):
-        """Constructor should respect custom rate parameter."""
-        mock_engine = MagicMock()
-        mock_init.return_value = mock_engine
-
-        TTS(rate=200)
-
-        mock_engine.setProperty.assert_any_call("rate", 200)
-
-    @patch("pyttsx3.init")
-    def test_constructor_sets_custom_volume(self, mock_init):
-        """Constructor should respect custom volume parameter."""
-        mock_engine = MagicMock()
-        mock_init.return_value = mock_engine
-
-        TTS(volume=0.5)
-
-        mock_engine.setProperty.assert_any_call("volume", 0.5)
-
-    @patch("pyttsx3.init")
-    def test_constructor_creates_lock(self, mock_init):
-        """Constructor should initialize a threading.Lock."""
-        mock_engine = MagicMock()
-        mock_init.return_value = mock_engine
-
-        tts = TTS()
-
+    def test_constructor_creates_lock(self):
+        tts = _make_tts()
         assert hasattr(tts, "_lock")
         assert isinstance(tts._lock, type(threading.Lock()))
+
+    def test_kokoro_not_loaded_at_init(self):
+        """Model should be lazy-loaded, not at construction time."""
+        tts = _make_tts()
+        assert tts._kokoro is None
+
+
+class TestTTSLoad:
+    """Test lazy model loading."""
+
+    def _fake_kokoro_module(self, mock_cls):
+        """Inject a fake kokoro_onnx module so lazy imports succeed."""
+        fake_mod = types.ModuleType("kokoro_onnx")
+        fake_mod.Kokoro = mock_cls
+        return patch.dict(sys.modules, {"kokoro_onnx": fake_mod})
+
+    def test_load_creates_kokoro_instance(self):
+        tts = _make_tts()
+        mock_instance = MagicMock()
+        mock_cls = MagicMock(return_value=mock_instance)
+
+        with self._fake_kokoro_module(mock_cls):
+            tts._load()
+
+        mock_cls.assert_called_once_with("/fake/kokoro.onnx", "/fake/voices.bin")
+        assert tts._kokoro is mock_instance
+
+    def test_load_only_once(self):
+        tts = _make_tts()
+        mock_cls = MagicMock(return_value=MagicMock())
+
+        with self._fake_kokoro_module(mock_cls):
+            tts._load()
+            tts._load()
+
+        mock_cls.assert_called_once()
 
 
 class TestTTSSpeak:
     """Test TTS.speak() method."""
 
-    @patch("pyttsx3.init")
-    def test_speak_returns_immediately(self, mock_init):
-        """speak() should return without waiting for playback."""
-        mock_engine = MagicMock()
-        mock_init.return_value = mock_engine
+    def _make_tts_with_mock_kokoro(self, **kwargs):
+        """Return (tts, mock_kokoro) with Kokoro pre-loaded."""
+        import numpy as np
+        tts = _make_tts(**kwargs)
+        mock_kokoro = MagicMock()
+        mock_kokoro.create.return_value = (
+            np.zeros(24000, dtype="float32"),  # 1s of silence at 24kHz
+            24000,
+        )
+        tts._kokoro = mock_kokoro
+        return tts, mock_kokoro
 
-        tts = TTS()
-        start = time.time()
-        tts.speak("Hello world")
-        elapsed = time.time() - start
+    def test_speak_returns_immediately(self):
+        """speak() should return without waiting for audio playback."""
+        tts, _ = self._make_tts_with_mock_kokoro()
 
-        # Should return in milliseconds, not block
+        with patch("sounddevice.play"), patch("sounddevice.wait"):
+            start = time.time()
+            tts.speak("Hello world")
+            elapsed = time.time() - start
+
         assert elapsed < 0.1
 
-    @patch("pyttsx3.init")
-    def test_speak_starts_daemon_thread(self, mock_init):
-        """speak() should start a daemon thread."""
-        mock_engine = MagicMock()
-        # Make runAndWait non-blocking to allow thread to finish quickly
-        mock_engine.runAndWait = MagicMock()
-        mock_init.return_value = mock_engine
+    def test_speak_starts_daemon_thread(self):
+        """speak() should launch a daemon thread."""
+        tts, _ = self._make_tts_with_mock_kokoro()
 
-        tts = TTS()
+        with patch("sounddevice.play"), patch("sounddevice.wait"):
+            with patch("threading.Thread") as mock_thread_cls:
+                mock_thread = MagicMock()
+                mock_thread_cls.return_value = mock_thread
 
-        # Count threads before
-        thread_count_before = threading.active_count()
+                tts.speak("Test")
 
-        tts.speak("Hello")
+                mock_thread_cls.assert_called_once()
+                assert mock_thread_cls.call_args[1].get("daemon") is True
+                mock_thread.start.assert_called_once()
 
-        # Give thread time to start and complete
-        time.sleep(0.2)
+    def test_speak_calls_kokoro_create(self):
+        """speak() thread should call kokoro.create with correct args."""
+        tts, mock_kokoro = self._make_tts_with_mock_kokoro(voice="bf_emma", rate=175)
 
-        # Should have started a new thread (daemon threads still count while running)
-        # Just verify the call was made
-        mock_engine.say.assert_called_once_with("Hello")
+        with patch("sounddevice.play"), patch("sounddevice.wait"):
+            tts.speak("Hello IRIS")
+            time.sleep(0.1)
 
-    @patch("pyttsx3.init")
-    def test_speak_thread_is_daemon(self, mock_init):
-        """speak() should create daemon threads (doesn't block exit)."""
-        mock_engine = MagicMock()
-        mock_init.return_value = mock_engine
+        mock_kokoro.create.assert_called_once_with(
+            "Hello IRIS",
+            voice="bf_emma",
+            speed=pytest.approx(1.0),
+            lang="en-us",
+        )
 
-        tts = TTS()
+    def test_speak_applies_volume(self):
+        """speak() should scale samples by volume before playback."""
+        import numpy as np
+        tts, mock_kokoro = self._make_tts_with_mock_kokoro(volume=0.5)
+        samples = np.ones(100, dtype="float32")
+        mock_kokoro.create.return_value = (samples, 24000)
 
-        # Mock threading.Thread to capture the daemon flag
-        with patch("threading.Thread") as mock_thread_cls:
-            mock_thread = MagicMock()
-            mock_thread_cls.return_value = mock_thread
+        captured = {}
 
+        def fake_play(audio, sr):
+            captured["audio"] = audio.copy()
+            captured["sr"] = sr
+
+        with patch("sounddevice.play", side_effect=fake_play), patch("sounddevice.wait"):
             tts.speak("Test")
+            time.sleep(0.1)
 
-            # Verify daemon=True was passed
-            mock_thread_cls.assert_called_once()
-            call_kwargs = mock_thread_cls.call_args[1]
-            assert call_kwargs.get("daemon") is True
+        assert captured["audio"] == pytest.approx(0.5 * np.ones(100))
+        assert captured["sr"] == 24000
 
-    @patch("pyttsx3.init")
-    def test_speak_calls_engine_say_and_runAndWait(self, mock_init):
-        """speak() thread should call engine.say() and engine.runAndWait()."""
-        mock_engine = MagicMock()
-        mock_init.return_value = mock_engine
-
-        tts = TTS()
-        tts.speak("Hello world")
-
-        # Wait for thread to execute
-        time.sleep(0.1)
-
-        mock_engine.say.assert_called_once_with("Hello world")
-        mock_engine.runAndWait.assert_called_once()
-
-    @patch("pyttsx3.init")
-    def test_speak_uses_lock(self, mock_init):
-        """speak() should acquire lock during say/runAndWait."""
-        mock_engine = MagicMock()
-        mock_init.return_value = mock_engine
-
-        tts = TTS()
-
-        # Mock the lock to track if it's acquired
+    def test_speak_uses_lock(self):
+        """speak() should acquire the lock during synthesis/playback."""
+        tts, _ = self._make_tts_with_mock_kokoro()
         mock_lock = MagicMock()
         tts._lock = mock_lock
 
-        tts.speak("Test")
-        time.sleep(0.1)
+        with patch("sounddevice.play"), patch("sounddevice.wait"):
+            tts.speak("Test")
+            time.sleep(0.1)
 
-        # Lock should have been acquired (enter) and released (exit)
         mock_lock.__enter__.assert_called_once()
         mock_lock.__exit__.assert_called_once()
 
-    @patch("pyttsx3.init")
-    def test_speak_concurrent_calls_serialized(self, mock_init):
+    def test_speak_concurrent_calls_serialized(self):
         """Multiple speak() calls should be serialized by the lock."""
-        mock_engine = MagicMock()
-        mock_init.return_value = mock_engine
-
-        tts = TTS()
-
-        # Call order tracker
+        import numpy as np
+        tts = _make_tts()
         call_order = []
 
-        def side_effect_say(text):
-            call_order.append(f"say:{text}")
+        mock_kokoro = MagicMock()
+        mock_kokoro.create.return_value = (np.zeros(100, dtype="float32"), 24000)
+        tts._kokoro = mock_kokoro
 
-        def side_effect_runAndWait():
-            call_order.append("runAndWait")
-            time.sleep(0.05)  # Simulate playback time
+        def fake_play(audio, sr):
+            call_order.append("play")
 
-        mock_engine.say.side_effect = side_effect_say
-        mock_engine.runAndWait.side_effect = side_effect_runAndWait
+        def fake_wait():
+            call_order.append("wait")
+            time.sleep(0.05)
 
-        # Start multiple speak calls rapidly
-        tts.speak("First")
-        tts.speak("Second")
+        with patch("sounddevice.play", side_effect=fake_play):
+            with patch("sounddevice.wait", side_effect=fake_wait):
+                tts.speak("First")
+                tts.speak("Second")
+                time.sleep(0.4)
 
-        # Wait for all threads to complete
-        time.sleep(0.3)
-
-        # Verify calls were serialized (First fully completed before Second)
-        assert call_order[0] == "say:First"
-        assert call_order[1] == "runAndWait"
-        assert call_order[2] == "say:Second"
-        assert call_order[3] == "runAndWait"
+        assert call_order == ["play", "wait", "play", "wait"]
 
 
 class TestTTSStop:
     """Test TTS.stop() method."""
 
-    @patch("pyttsx3.init")
-    def test_stop_calls_engine_stop(self, mock_init):
-        """stop() should call engine.stop()."""
-        mock_engine = MagicMock()
-        mock_init.return_value = mock_engine
+    def test_stop_calls_sd_stop(self):
+        tts = _make_tts()
+        with patch("sounddevice.stop") as mock_stop:
+            tts.stop()
+        mock_stop.assert_called_once()
 
-        tts = TTS()
-        tts.stop()
-
-        mock_engine.stop.assert_called_once()
-
-    @patch("pyttsx3.init")
-    def test_stop_can_be_called_without_speak(self, mock_init):
-        """stop() should be callable even if speak() was never called."""
-        mock_engine = MagicMock()
-        mock_init.return_value = mock_engine
-
-        tts = TTS()
-        # Should not raise
-        tts.stop()
-
-        mock_engine.stop.assert_called_once()
+    def test_stop_callable_before_speak(self):
+        """stop() should not raise even if speak() was never called."""
+        tts = _make_tts()
+        with patch("sounddevice.stop"):
+            tts.stop()  # should not raise

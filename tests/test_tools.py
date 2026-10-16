@@ -826,14 +826,14 @@ class TestRegistry:
         mock_create_task.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch("hub.tools.shell.run_command")
+    @patch("hub.tools.shell.run_command", new_callable=MagicMock)
     async def test_async_dispatch_delegates_to_sync(self, mock_run_cmd):
         """Test async_dispatch delegates non-timer tools to sync dispatch."""
         from hub.tools import registry
 
         mock_run_cmd.return_value = {"ok": True, "stdout": "output", "stderr": "", "returncode": 0}
 
-        mock_ws = AsyncMock()
+        mock_ws = MagicMock()
 
         result_json = await registry.async_dispatch("shell_run", {"command": "echo test"}, mock_ws)
         result = json.loads(result_json)

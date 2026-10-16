@@ -8,6 +8,7 @@
   "stop_phrases": ["stop", "goodbye", "that's all", "sleep", "nevermind iris"],
   "tts_rate": 175,
   "tts_volume": 0.9,
+  "tts_voice": "af_heart",
   "keras_backend": "torch",
   "iris_projects_dir": "iris_projects",
   "_comment_uart": "Set uart_wake_port to the COM port of the Basys 3 (e.g. COM3 on Windows, /dev/ttyUSB0 on Linux). Leave null to use software wake word only.",

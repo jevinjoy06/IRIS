@@ -47,6 +47,16 @@ def init_db() -> None:
                 created_at  TEXT    NOT NULL
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS sessions (
+                session_id      TEXT    PRIMARY KEY,
+                label           TEXT,
+                status          TEXT    NOT NULL DEFAULT 'open' CHECK(status IN ('open','warm','closed')),
+                summary         TEXT,
+                created_at      TEXT    NOT NULL,
+                last_active_at  TEXT    NOT NULL
+            )
+        """)
 
 
 def write_fact(
@@ -129,7 +139,15 @@ def build_memory_context(query: str) -> str:
 # Session and turn management
 def start_session() -> str:
     """Create a new conversation session and return its UUID."""
-    return str(uuid.uuid4())
+    session_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+    with _connect() as conn:
+        conn.execute(
+            """INSERT INTO sessions (session_id, created_at, last_active_at)
+               VALUES (?, ?, ?)""",
+            (session_id, now, now),
+        )
+    return session_id
 
 
 def save_turn(
@@ -262,3 +280,82 @@ def delete_conversation(session_id: str) -> int:
     with _connect() as conn:
         cur = conn.execute("DELETE FROM turns WHERE session_id = ?", (session_id,))
         return cur.rowcount
+
+
+def label_session(session_id: str, label: str) -> None:
+    """Set the label for a session."""
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE sessions SET label = ? WHERE session_id = ?",
+            (label, session_id),
+        )
+
+
+def close_session(session_id: str, summary: str | None = None) -> None:
+    """Close a session and optionally set its summary."""
+    now = datetime.now(timezone.utc).isoformat()
+    with _connect() as conn:
+        conn.execute(
+            """UPDATE sessions
+               SET status = 'closed', summary = ?, last_active_at = ?
+               WHERE session_id = ?""",
+            (summary, now, session_id),
+        )
+
+
+def set_session_warm(session_id: str) -> None:
+    """Mark a session as warm (user stepped away but resumable)."""
+    now = datetime.now(timezone.utc).isoformat()
+    with _connect() as conn:
+        conn.execute(
+            """UPDATE sessions
+               SET status = 'warm', last_active_at = ?
+               WHERE session_id = ?""",
+            (now, session_id),
+        )
+
+
+def update_session_last_active(session_id: str) -> None:
+    """Update the last_active_at timestamp for a session."""
+    now = datetime.now(timezone.utc).isoformat()
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE sessions SET last_active_at = ? WHERE session_id = ?",
+            (now, session_id),
+        )
+
+
+def get_session(session_id: str) -> dict | None:
+    """Get session metadata by ID."""
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM sessions WHERE session_id = ?",
+            (session_id,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def search_sessions(query: str, limit: int = 5) -> list[dict]:
+    """Keyword search across label + summary of non-open sessions."""
+    terms = query.lower().split()
+    with _connect() as conn:
+        rows = conn.execute(
+            """SELECT session_id, label, summary, status, last_active_at
+               FROM sessions
+               WHERE status IN ('warm', 'closed')
+               ORDER BY last_active_at DESC""",
+        ).fetchall()
+
+    scored = []
+    for row in rows:
+        text = ""
+        if row["label"]:
+            text += row["label"].lower()
+        if row["summary"]:
+            text += " " + row["summary"].lower()
+        hits = sum(1 for t in terms if t in text)
+        if hits > 0:
+            scored.append((hits, dict(row)))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [s[1] for s in scored[:limit]]

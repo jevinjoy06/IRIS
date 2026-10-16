@@ -9,6 +9,10 @@ class Transcriber:
         self._model_name = model_name
         self._model = None
 
+    def warmup(self) -> None:
+        """Load model now so first transcription has no cold-start delay."""
+        self._load()
+
     def _load(self) -> None:
         if self._model is not None:
             return

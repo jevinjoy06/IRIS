@@ -1,4 +1,5 @@
 """IRIS brain — agentic loop using Ollama (OpenAI-compatible API)."""
+import asyncio
 import json
 import os
 from pathlib import Path
@@ -17,57 +18,88 @@ from hub.tools.registry import TOOL_DEFINITIONS, async_dispatch
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434/v1")
 MODEL = os.environ.get("OLLAMA_MODEL", "llama3.1:8b")
 
-SYSTEM_PROMPT = """You are IRIS — Intelligent Responsive Interface System — Jevin's personal AI assistant running on his GPU PC.
+SYSTEM_PROMPT = """You are IRIS — Intelligent Responsive Interface System — Jevin's personal AI assistant on his GPU PC.
+
+Think FRIDAY from Iron Man. Sharp, loyal, gets things done. You call him "boss" naturally (not every sentence). Brief by default. No filler phrases ("Absolutely!", "Great question!"). Confident. Dry humor when it fits. Brief confirmations when done. Direct when something goes wrong.
 
 You have access to his file system, the web, and a persistent world model you can read and write. You remember facts about his life, projects, preferences, and commitments across all conversations.
 
-Personality:
-- Direct and brief. Short answers by default. Elaborate only when depth is asked for.
-- Capable and confident. "I'll handle it." then handle it.
-- Consistent identity across every device and channel.
-
 Memory:
-- After every turn you extract and store new facts. Relevant facts from your world model are injected below.
-- When you learn something worth keeping — a preference, a deadline, a project detail — write it with memory_write.
+- After every turn you extract and store new facts. Relevant facts are injected below.
+- When you learn something worth keeping — a preference, deadline, project detail — write it with memory_write.
 
 Tools:
-- Use tools when they are the right way to answer. Don't ask permission for routine file reads or web searches.
-- Confirm before writing or deleting files unless the user has already indicated intent."""
+- Use tools when they're the right answer. Don't ask permission for routine file reads or web searches.
+- Confirm before writing or deleting unless he's already indicated intent."""
+
+_client = None
 
 
-def _make_client():
-    from openai import AsyncOpenAI
-    return AsyncOpenAI(base_url=OLLAMA_BASE_URL, api_key="ollama")
+def _get_client():
+    global _client
+    if _client is None:
+        from openai import AsyncOpenAI
+        _client = AsyncOpenAI(base_url=OLLAMA_BASE_URL, api_key="ollama")
+    return _client
 
 
-async def process_turn(user_text: str, ws: "WebSocket", session_id: str | None = None) -> None:
-    client = _make_client()
+async def process_turn(
+    user_text: str,
+    ws: "WebSocket",
+    session_id: str | None = None,
+    turn_number: int = 1,
+) -> bool:
+    """Process a turn. Returns True if session was closed this turn."""
+    client = _get_client()
 
     # Initialize session if not provided
     if session_id is None:
         session_id = memory.start_session()
+
+    # Update session activity
+    memory.update_session_last_active(session_id)
 
     # Save user message
     memory.save_turn(session_id, "user", user_text)
 
     mem_context = memory.build_memory_context(user_text)
 
-    # Load recent turns for conversation context
-    recent_turns = memory.get_session_turns(session_id, limit=10)
-    if recent_turns and len(recent_turns) > 1:  # Exclude the just-saved user turn
-        history_lines = []
-        for t in recent_turns[:-1]:
-            prefix = {"user": "User", "assistant": "IRIS", "tool": f"Tool({t.get('tool_name','?')})"}.get(t["role"], t["role"])
-            history_lines.append(f"[{prefix}]: {t['content'][:500]}")
-        if history_lines:
-            mem_context = "\n\n## Recent conversation\n" + "\n".join(history_lines) + ("\n\n" + mem_context if mem_context else "")
+    # On first turn, search for related sessions
+    resume_note = ""
+    if turn_number == 1:
+        related = memory.search_sessions(user_text, limit=3)
+        if related:
+            resume_snippets = []
+            for sess in related:
+                label = sess.get("label") or "(unlabeled)"
+                summary = sess.get("summary") or ""
+                snippet = f"  - {label}"
+                if summary:
+                    snippet += f": {summary[:60]}..."
+                resume_snippets.append(snippet)
+            resume_note = (
+                "\n\n## Possibly continuing\n"
+                "You may be picking up from a past session. Candidates:\n"
+                + "\n".join(resume_snippets)
+                + "\nIf this seems related to what boss just said, ask casually in one line if he wants to pick that up. If it's clearly something new, just respond normally."
+            )
 
-    system = SYSTEM_PROMPT + ("\n\n" + mem_context if mem_context else "")
-
+    # Build message history (user/assistant roles only)
+    recent_turns = memory.get_session_turns(session_id, limit=20)
     messages: list[dict] = [
-        {"role": "system", "content": system},
-        {"role": "user", "content": user_text},
+        {"role": "system", "content": SYSTEM_PROMPT + ("\n\n" + mem_context if mem_context else "") + resume_note},
     ]
+
+    # Add historical turns (skip tool turns and the current user turn already saved)
+    for t in recent_turns[:-1]:
+        if t["role"] == "user":
+            messages.append({"role": "user", "content": t["content"]})
+        elif t["role"] == "assistant":
+            messages.append({"role": "assistant", "content": t["content"]})
+
+    # Append current user message
+    messages.append({"role": "user", "content": user_text})
+
     full_response_parts: list[str] = []
 
     while True:
@@ -109,7 +141,7 @@ async def process_turn(user_text: str, ws: "WebSocket", session_id: str | None =
 
         except Exception as e:
             await ws.send_json({"type": "error", "text": str(e)})
-            return
+            return False
 
         if finish_reason == "tool_calls" and tool_calls_map:
             tool_calls_list = [
@@ -152,11 +184,26 @@ async def process_turn(user_text: str, ws: "WebSocket", session_id: str | None =
 
     await ws.send_json({"type": "done"})
 
-    full_response = "".join(full_response_parts)
-    # Save full assistant response
-    if full_response.strip():
-        memory.save_turn(session_id, "assistant", full_response)
-        await _extract_facts(user_text, full_response, client)
+    # Get final response text
+    current_text_final = ""
+    if messages and messages[-1]["role"] == "assistant":
+        current_text_final = messages[-1].get("content", "")
+
+    # Background tasks: extract facts and check for session close
+    asyncio.create_task(_extract_facts(user_text, current_text_final, client))
+
+    # On first turn, label the session in background
+    if turn_number == 1:
+        asyncio.create_task(_label_session(session_id, user_text, current_text_final))
+
+    # Detect if user is closing the conversation
+    should_close = await _detect_close_intent(user_text)
+    if should_close:
+        asyncio.create_task(_write_session_summary(session_id))
+        await ws.send_json({"type": "session_closed"})
+        return True
+
+    return False
 
 
 async def _extract_facts(user_text: str, assistant_response: str, client) -> None:
@@ -187,5 +234,88 @@ Assistant: {assistant_response}"""
                     importance=float(fact.get("importance", 0.5)),
                     tags=fact.get("tags"),
                 )
+    except Exception:
+        pass
+
+
+async def _label_session(session_id: str, first_message: str, response: str) -> None:
+    """Generate a 3-6 word label for the session in background."""
+    try:
+        client = _get_client()
+        prompt = f"""Generate a 3-6 word label for this conversation topic. Be concise and descriptive.
+
+User: {first_message[:200]}
+Assistant: {response[:200]}
+
+Return ONLY the label text, nothing else."""
+
+        result = await client.chat.completions.create(
+            model=MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=20,
+        )
+        label = result.choices[0].message.content.strip()
+        if label:
+            memory.label_session(session_id, label)
+    except Exception:
+        pass
+
+
+async def _detect_close_intent(user_text: str) -> bool:
+    """Detect if user is signaling conversation wrap-up."""
+    try:
+        client = _get_client()
+        prompt = f"""Is the user signaling they are wrapping up or ending the conversation?
+Examples of wrap-up: thanking, saying goodbye, "that's all", "we're good", "I'm all set", "thanks for your help", "see you later".
+
+User: {user_text}
+
+Respond with ONLY "yes" or "no"."""
+
+        result = await client.chat.completions.create(
+            model=MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=5,
+        )
+        answer = result.choices[0].message.content.strip().lower()
+        return answer.startswith("yes")
+    except Exception:
+        return False
+
+
+async def _write_session_summary(session_id: str) -> None:
+    """Write a 2-3 sentence summary of the session."""
+    try:
+        turns = memory.get_session_turns(session_id, limit=30)
+        conversation_text = ""
+        for t in turns:
+            role = t["role"].upper()
+            content = t["content"][:100]
+            conversation_text += f"[{role}]: {content}\n"
+
+        client = _get_client()
+        prompt = f"""Summarize this conversation in 2-3 sentences.
+
+{conversation_text}
+
+Return ONLY the summary, no other text."""
+
+        result = await client.chat.completions.create(
+            model=MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=150,
+        )
+        summary = result.choices[0].message.content.strip()
+        if summary:
+            memory.close_session(session_id, summary)
+    except Exception:
+        memory.close_session(session_id, None)
+
+
+async def close_session_externally(session_id: str, ws: "WebSocket") -> None:
+    """Close a session due to external trigger (silence timeout)."""
+    try:
+        await _write_session_summary(session_id)
+        await ws.send_json({"type": "session_closed"})
     except Exception:
         pass

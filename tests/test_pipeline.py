@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 
 from voice.pipeline import (
+    MAX_RECORD_FRAMES,
     SILENCE_CUTOFF_FRAMES,
     MIN_SPEECH_FRAMES,
     SAMPLE_RATE,
@@ -249,8 +250,9 @@ class TestRecordUtterance:
 class TestActiveLoopTimeout:
     """Test Pipeline._active_loop() timeout behavior."""
 
+    @pytest.mark.asyncio
     @patch("time.time")
-    def test_active_loop_returns_sleeping_on_timeout(self, mock_time):
+    async def test_active_loop_returns_sleeping_on_timeout(self, mock_time):
         """_active_loop should return SLEEPING if no speech for timeout duration."""
         pipeline = Pipeline({"active_session_timeout_seconds": 30})
 
@@ -259,19 +261,26 @@ class TestActiveLoopTimeout:
         mock_transcriber = MagicMock()
         mock_tts = MagicMock()
 
-        # Time progression: session starts at 0, then jumps to 35s (timeout is 30s)
-        time_values = [0, 0, 35]  # Called: initial, first check in loop, second check
+        # Time progression: last_speech_time=0, then jumps to 35s (timeout is 30s)
+        time_values = [0, 35]  # Called: last_speech_time, first check in loop
         mock_time.side_effect = time_values
 
         # _record_utterance returns None (no speech)
+        mock_ws = AsyncMock()
+        mock_connect_cm = AsyncMock()
+        mock_connect_cm.__aenter__.return_value = mock_ws
+        mock_connect_cm.__aexit__.return_value = None
+
         with patch.object(pipeline, "_record_utterance", return_value=None):
-            result = pipeline._active_loop(mock_stream, mock_vad, mock_transcriber, mock_tts)
+            with patch("websockets.connect", return_value=mock_connect_cm):
+                result = await pipeline._active_loop(mock_stream, mock_vad, mock_transcriber, mock_tts)
 
         assert result == PipelineState.SLEEPING
         mock_tts.speak.assert_called_with("Okay, going back to sleep")
 
+    @pytest.mark.asyncio
     @patch("time.time")
-    def test_active_loop_timeout_not_triggered_within_threshold(self, mock_time):
+    async def test_active_loop_timeout_not_triggered_within_threshold(self, mock_time):
         """_active_loop should not timeout if speech detected within threshold."""
         pipeline = Pipeline({"active_session_timeout_seconds": 30})
 
@@ -283,24 +292,32 @@ class TestActiveLoopTimeout:
         # Mock successful recording and transcription
         audio = np.ones(1000, dtype=np.float32)
 
-        time_values = [0, 0, 5, 5, 10]  # Stay within timeout
+        # last_speech_time=0, loop check=5 (ok, 5-0=5 not > 30), record audio,
+        # update last_speech=5, then _send_and_speak returns False → exit
+        time_values = [0, 5, 5]
         mock_time.side_effect = time_values
 
         # First call records utterance, second check time within limit
         with patch.object(
             pipeline, "_record_utterance", side_effect=[audio, None]
         ) as mock_record:
-            with patch.object(
-                pipeline,
-                "_send_and_speak",
-                new_callable=AsyncMock,
-                return_value=False,  # Force exit
-            ):
-                mock_transcriber.transcribe.return_value = "hello"
+            mock_ws = AsyncMock()
+            mock_connect_cm = AsyncMock()
+            mock_connect_cm.__aenter__.return_value = mock_ws
+            mock_connect_cm.__aexit__.return_value = None
 
-                result = pipeline._active_loop(
-                    mock_stream, mock_vad, mock_transcriber, mock_tts
-                )
+            with patch("websockets.connect", return_value=mock_connect_cm):
+                with patch.object(
+                    pipeline,
+                    "_send_and_speak",
+                    new_callable=AsyncMock,
+                    return_value=False,  # Force exit
+                ):
+                    mock_transcriber.transcribe.return_value = "hello"
+
+                    result = await pipeline._active_loop(
+                        mock_stream, mock_vad, mock_transcriber, mock_tts
+                    )
 
         # Should have returned SLEEPING due to hub error, not timeout
         assert result == PipelineState.SLEEPING
@@ -309,8 +326,9 @@ class TestActiveLoopTimeout:
 class TestStopPhraseDetection:
     """Test Pipeline._active_loop() stop phrase detection."""
 
+    @pytest.mark.asyncio
     @patch("time.time")
-    def test_active_loop_detects_stop_phrase(self, mock_time):
+    async def test_active_loop_detects_stop_phrase(self, mock_time):
         """_active_loop should detect stop phrases and return SLEEPING."""
         pipeline = Pipeline({"stop_phrases": ["stop", "goodbye"]})
 
@@ -320,28 +338,35 @@ class TestStopPhraseDetection:
         mock_tts = MagicMock()
 
         audio = np.ones(1000, dtype=np.float32)
-        # time.time() calls: session_start (2x), last_speech_time (2x), then check in loop
-        mock_time.side_effect = [0, 0, 0, 0, 5]
+        # last_speech_time=0, loop check=5 ok, update=5, then stop phrase → return
+        mock_time.side_effect = [0, 5, 5]
 
         # Transcribe returns "goodbye" (stop phrase)
         mock_transcriber.transcribe.return_value = "goodbye"
 
+        mock_ws = AsyncMock()
+        mock_connect_cm = AsyncMock()
+        mock_connect_cm.__aenter__.return_value = mock_ws
+        mock_connect_cm.__aexit__.return_value = None
+
         with patch.object(pipeline, "_record_utterance", return_value=audio):
-            with patch.object(
-                pipeline,
-                "_send_and_speak",
-                new_callable=AsyncMock,
-                return_value=True,
-            ):
-                result = pipeline._active_loop(
-                    mock_stream, mock_vad, mock_transcriber, mock_tts
-                )
+            with patch("websockets.connect", return_value=mock_connect_cm):
+                with patch.object(
+                    pipeline,
+                    "_send_and_speak",
+                    new_callable=AsyncMock,
+                    return_value=True,
+                ):
+                    result = await pipeline._active_loop(
+                        mock_stream, mock_vad, mock_transcriber, mock_tts
+                    )
 
         assert result == PipelineState.SLEEPING
         mock_tts.speak.assert_called_with("Goodbye")
 
+    @pytest.mark.asyncio
     @patch("time.time")
-    def test_active_loop_stop_phrase_case_insensitive(self, mock_time):
+    async def test_active_loop_stop_phrase_case_insensitive(self, mock_time):
         """Stop phrase detection should be case insensitive."""
         pipeline = Pipeline({"stop_phrases": ["stop"]})
 
@@ -351,22 +376,28 @@ class TestStopPhraseDetection:
         mock_tts = MagicMock()
 
         audio = np.ones(1000, dtype=np.float32)
-        # time.time() calls: session_start (2x), last_speech_time (2x), then check in loop
-        mock_time.side_effect = [0, 0, 0, 0, 5]
+        # last_speech_time=0, loop check=5 ok, update=5, then stop phrase → return
+        mock_time.side_effect = [0, 5, 5]
 
         # Return uppercase stop phrase
         mock_transcriber.transcribe.return_value = "STOP"
 
+        mock_ws = AsyncMock()
+        mock_connect_cm = AsyncMock()
+        mock_connect_cm.__aenter__.return_value = mock_ws
+        mock_connect_cm.__aexit__.return_value = None
+
         with patch.object(pipeline, "_record_utterance", return_value=audio):
-            with patch.object(
-                pipeline,
-                "_send_and_speak",
-                new_callable=AsyncMock,
-                return_value=True,
-            ):
-                result = pipeline._active_loop(
-                    mock_stream, mock_vad, mock_transcriber, mock_tts
-                )
+            with patch("websockets.connect", return_value=mock_connect_cm):
+                with patch.object(
+                    pipeline,
+                    "_send_and_speak",
+                    new_callable=AsyncMock,
+                    return_value=True,
+                ):
+                    result = await pipeline._active_loop(
+                        mock_stream, mock_vad, mock_transcriber, mock_tts
+                    )
 
         assert result == PipelineState.SLEEPING
 
@@ -380,7 +411,7 @@ class TestSendAndSpeak:
         pipeline = Pipeline({"hub_url": "ws://localhost:7865/ws"})
         mock_tts = MagicMock()
 
-        # Mock websockets.connect and the async context manager
+        # Mock WebSocket directly (no longer opens its own connection)
         mock_ws = AsyncMock()
         messages = [
             '{"type": "token", "text": "Hello "}',
@@ -394,13 +425,7 @@ class TestSendAndSpeak:
 
         mock_ws.__aiter__ = lambda self: async_iter()
 
-        # Create async context manager that returns the mock WebSocket
-        mock_connect = AsyncMock()
-        mock_connect.__aenter__.return_value = mock_ws
-        mock_connect.__aexit__.return_value = None
-
-        with patch("websockets.connect", return_value=mock_connect):
-            result = await pipeline._send_and_speak("test message", mock_tts)
+        result = await pipeline._send_and_speak("test message", mock_tts, mock_ws)
 
         assert result is True
         assert mock_ws.send.called
@@ -424,12 +449,7 @@ class TestSendAndSpeak:
 
         mock_ws.__aiter__ = lambda self: async_iter()
 
-        mock_connect = AsyncMock()
-        mock_connect.__aenter__.return_value = mock_ws
-        mock_connect.__aexit__.return_value = None
-
-        with patch("websockets.connect", return_value=mock_connect):
-            await pipeline._send_and_speak("test", mock_tts)
+        await pipeline._send_and_speak("test", mock_tts, mock_ws)
 
         # Should speak the full accumulated text
         mock_tts.speak.assert_called_once_with("The quick brown fox")
@@ -441,14 +461,13 @@ class TestSendAndSpeak:
         mock_tts = MagicMock()
 
         mock_ws = AsyncMock()
-        mock_ws.__aiter__.return_value = [
-            '{"type": "error", "text": "Something went wrong"}'
-        ]
 
-        with patch("websockets.connect", new_callable=AsyncMock) as mock_connect:
-            mock_connect.return_value.__aenter__.return_value = mock_ws
+        async def async_iter():
+            yield '{"type": "error", "text": "Something went wrong"}'
 
-            result = await pipeline._send_and_speak("test", mock_tts)
+        mock_ws.__aiter__ = lambda self: async_iter()
+
+        result = await pipeline._send_and_speak("test", mock_tts, mock_ws)
 
         assert result is False
         # Should not speak on error
@@ -456,14 +475,14 @@ class TestSendAndSpeak:
 
     @pytest.mark.asyncio
     async def test_send_and_speak_returns_false_on_connection_error(self):
-        """_send_and_speak should return False if connection fails."""
+        """_send_and_speak should return False if send fails."""
         pipeline = Pipeline({})
         mock_tts = MagicMock()
 
-        with patch("websockets.connect", new_callable=AsyncMock) as mock_connect:
-            mock_connect.side_effect = Exception("Connection failed")
+        mock_ws = AsyncMock()
+        mock_ws.send.side_effect = Exception("Connection failed")
 
-            result = await pipeline._send_and_speak("test", mock_tts)
+        result = await pipeline._send_and_speak("test", mock_tts, mock_ws)
 
         assert result is False
         mock_tts.speak.assert_not_called()
@@ -483,12 +502,7 @@ class TestSendAndSpeak:
 
         mock_ws.__aiter__ = lambda self: async_iter()
 
-        mock_connect = AsyncMock()
-        mock_connect.__aenter__.return_value = mock_ws
-        mock_connect.__aexit__.return_value = None
-
-        with patch("websockets.connect", return_value=mock_connect):
-            result = await pipeline._send_and_speak("test", mock_tts)
+        result = await pipeline._send_and_speak("test", mock_tts, mock_ws)
 
         assert result is True
         # Should not speak if no tokens
@@ -509,12 +523,7 @@ class TestSendAndSpeak:
 
         mock_ws.__aiter__ = lambda self: async_iter()
 
-        mock_connect = AsyncMock()
-        mock_connect.__aenter__.return_value = mock_ws
-        mock_connect.__aexit__.return_value = None
-
-        with patch("websockets.connect", return_value=mock_connect):
-            await pipeline._send_and_speak("Hello Hub", mock_tts)
+        await pipeline._send_and_speak("Hello Hub", mock_tts, mock_ws)
 
         # Verify the message was formatted correctly
         sent_msg = mock_ws.send.call_args[0][0]
@@ -522,3 +531,261 @@ class TestSendAndSpeak:
         parsed = json.loads(sent_msg)
         assert parsed["type"] == "message"
         assert parsed["text"] == "Hello Hub"
+
+
+class TestPipelineConstructorUARTConfig:
+    """Test Pipeline constructor UART configuration fields."""
+
+    def test_constructor_uart_port_defaults_to_none(self):
+        """uart_port should default to None when not in config."""
+        pipeline = Pipeline({})
+        assert pipeline.uart_port is None
+
+    def test_constructor_uart_port_custom(self):
+        """Constructor should load custom uart_wake_port."""
+        pipeline = Pipeline({"uart_wake_port": "COM3"})
+        assert pipeline.uart_port == "COM3"
+
+    def test_constructor_uart_baud_default(self):
+        """uart_baud should default to 115200."""
+        pipeline = Pipeline({})
+        assert pipeline.uart_baud == 115200
+
+    def test_constructor_uart_baud_custom(self):
+        """Constructor should load custom uart_wake_baud."""
+        pipeline = Pipeline({"uart_wake_baud": 9600})
+        assert pipeline.uart_baud == 9600
+
+    def test_constructor_uart_listener_initially_none(self):
+        """_uart_listener should be None before run() is called."""
+        pipeline = Pipeline({})
+        assert pipeline._uart_listener is None
+
+
+class TestSleepingLoop:
+    """Test Pipeline._sleeping_loop() wake detection."""
+
+    def _setup(self):
+        pipeline = Pipeline({})
+        raw_frame = np.zeros(1280, dtype=np.int16)
+        mock_stream = MagicMock()
+        mock_stream.read.return_value = (raw_frame, None)
+        mock_vad = MagicMock()
+        mock_transcriber = MagicMock()
+        mock_tts = MagicMock()
+        return pipeline, mock_stream, mock_vad, mock_transcriber, mock_tts
+
+    def test_sleeping_loop_returns_active_on_wake_word(self):
+        """_sleeping_loop should return ACTIVE when OWW score exceeds threshold."""
+        pipeline, stream, vad, transcriber, tts = self._setup()
+        mock_oww = MagicMock()
+        mock_oww.prediction_buffer = {"hey_jarvis": [0.9]}
+
+        result = pipeline._sleeping_loop(stream, mock_oww, vad, transcriber, tts)
+
+        assert result == PipelineState.ACTIVE
+
+    def test_sleeping_loop_speaks_yes_on_wake_word(self):
+        """_sleeping_loop should call tts.speak('Yes') when wake word triggers."""
+        pipeline, stream, vad, transcriber, tts = self._setup()
+        mock_oww = MagicMock()
+        mock_oww.prediction_buffer = {"hey_jarvis": [0.9]}
+
+        pipeline._sleeping_loop(stream, mock_oww, vad, transcriber, tts)
+
+        tts.speak.assert_called_once_with("Yes")
+
+    def test_sleeping_loop_score_at_threshold_does_not_trigger(self):
+        """Score exactly at threshold should not trigger (condition is score > threshold)."""
+        pipeline, stream, vad, transcriber, tts = self._setup()
+        pipeline.wake_word_threshold = 0.5
+
+        scores = [0.5, 0.9]  # First at threshold (no trigger), second above (trigger)
+        call_count = [0]
+        buf = {"hey_jarvis": [0.5]}
+
+        def update(audio):
+            buf["hey_jarvis"] = [scores[call_count[0]]]
+            call_count[0] += 1
+
+        mock_oww = MagicMock()
+        mock_oww.predict.side_effect = update
+        mock_oww.prediction_buffer = buf
+
+        result = pipeline._sleeping_loop(stream, mock_oww, vad, transcriber, tts)
+
+        assert result == PipelineState.ACTIVE
+        assert call_count[0] == 2  # Looped once before triggering
+
+    def test_sleeping_loop_returns_active_on_uart_trigger(self):
+        """_sleeping_loop should return ACTIVE when UART hardware trigger fires."""
+        pipeline, stream, vad, transcriber, tts = self._setup()
+
+        mock_oww = MagicMock()
+        mock_oww.prediction_buffer = {"hey_jarvis": [0.0]}  # OWW never triggers
+
+        pipeline._uart_listener = MagicMock()
+        pipeline._uart_listener.triggered.return_value = True
+
+        result = pipeline._sleeping_loop(stream, mock_oww, vad, transcriber, tts)
+
+        assert result == PipelineState.ACTIVE
+
+    def test_sleeping_loop_speaks_yes_on_uart_trigger(self):
+        """_sleeping_loop should call tts.speak('Yes') when UART trigger fires."""
+        pipeline, stream, vad, transcriber, tts = self._setup()
+
+        mock_oww = MagicMock()
+        mock_oww.prediction_buffer = {"hey_jarvis": [0.0]}
+
+        pipeline._uart_listener = MagicMock()
+        pipeline._uart_listener.triggered.return_value = True
+
+        pipeline._sleeping_loop(stream, mock_oww, vad, transcriber, tts)
+
+        tts.speak.assert_called_once_with("Yes")
+
+    def test_sleeping_loop_no_uart_check_when_listener_is_none(self):
+        """No UART listener → triggered() should never be called."""
+        pipeline, stream, vad, transcriber, tts = self._setup()
+        assert pipeline._uart_listener is None  # Default
+
+        mock_oww = MagicMock()
+        mock_oww.prediction_buffer = {"hey_jarvis": [0.9]}  # OWW triggers immediately
+
+        # Should complete without AttributeError on None._uart_listener
+        result = pipeline._sleeping_loop(stream, mock_oww, vad, transcriber, tts)
+
+        assert result == PipelineState.ACTIVE
+
+
+class TestActiveLoopEdgeCases:
+    """Additional edge cases for Pipeline._active_loop()."""
+
+    @pytest.mark.asyncio
+    @patch("time.time")
+    async def test_active_loop_skips_hub_on_empty_transcript(self, mock_time):
+        """Whitespace-only transcript should not invoke _send_and_speak."""
+        pipeline = Pipeline({})
+        mock_stream = MagicMock()
+        mock_vad = MagicMock()
+        mock_transcriber = MagicMock()
+        mock_tts = MagicMock()
+
+        audio = np.ones(1000, dtype=np.float32)
+        # last_speech_time=0
+        # iter1: check=5 ok, record→audio, last_speech=5, transcribe=" " → empty → continue
+        # iter2: check=36 → 36-5=31 > 30 → timeout → return SLEEPING
+        mock_time.side_effect = [0, 5, 5, 36]
+        mock_transcriber.transcribe.return_value = "   "
+
+        mock_ws = AsyncMock()
+        mock_connect_cm = AsyncMock()
+        mock_connect_cm.__aenter__.return_value = mock_ws
+        mock_connect_cm.__aexit__.return_value = None
+
+        with patch.object(pipeline, "_record_utterance", return_value=audio):
+            with patch("websockets.connect", return_value=mock_connect_cm):
+                with patch.object(
+                    pipeline, "_send_and_speak", new_callable=AsyncMock
+                ) as mock_sas:
+                    result = await pipeline._active_loop(
+                        mock_stream, mock_vad, mock_transcriber, mock_tts
+                    )
+
+        mock_sas.assert_not_called()
+        assert result == PipelineState.SLEEPING
+
+    @pytest.mark.asyncio
+    @patch("time.time")
+    async def test_active_loop_returns_sleeping_on_hub_error(self, mock_time):
+        """_active_loop should return SLEEPING when hub sends an error."""
+        pipeline = Pipeline({})
+        mock_stream = MagicMock()
+        mock_vad = MagicMock()
+        mock_transcriber = MagicMock()
+        mock_tts = MagicMock()
+
+        audio = np.ones(1000, dtype=np.float32)
+        mock_time.side_effect = [0, 5, 5]
+        mock_transcriber.transcribe.return_value = "hello iris"
+
+        mock_ws = AsyncMock()
+        mock_connect_cm = AsyncMock()
+        mock_connect_cm.__aenter__.return_value = mock_ws
+        mock_connect_cm.__aexit__.return_value = None
+
+        with patch.object(pipeline, "_record_utterance", return_value=audio):
+            with patch("websockets.connect", return_value=mock_connect_cm):
+                with patch.object(
+                    pipeline, "_send_and_speak", new_callable=AsyncMock, return_value=False
+                ):
+                    result = await pipeline._active_loop(
+                        mock_stream, mock_vad, mock_transcriber, mock_tts
+                    )
+
+        assert result == PipelineState.SLEEPING
+
+    @pytest.mark.asyncio
+    @patch("time.time")
+    async def test_active_loop_stop_phrase_as_substring(self, mock_time):
+        """Stop phrase embedded in longer utterance should still trigger session end."""
+        pipeline = Pipeline({"stop_phrases": ["stop"]})
+        mock_stream = MagicMock()
+        mock_vad = MagicMock()
+        mock_transcriber = MagicMock()
+        mock_tts = MagicMock()
+
+        audio = np.ones(1000, dtype=np.float32)
+        mock_time.side_effect = [0, 5, 5]
+        mock_transcriber.transcribe.return_value = "please stop listening"
+
+        mock_ws = AsyncMock()
+        mock_connect_cm = AsyncMock()
+        mock_connect_cm.__aenter__.return_value = mock_ws
+        mock_connect_cm.__aexit__.return_value = None
+
+        with patch.object(pipeline, "_record_utterance", return_value=audio):
+            with patch("websockets.connect", return_value=mock_connect_cm):
+                result = await pipeline._active_loop(
+                    mock_stream, mock_vad, mock_transcriber, mock_tts
+                )
+
+        assert result == PipelineState.SLEEPING
+        mock_tts.speak.assert_called_with("Goodbye")
+
+
+class TestRecordUtteranceEdgeCases:
+    """Edge cases for Pipeline._record_utterance() hard cap and frame count."""
+
+    @patch("voice.pipeline.MAX_RECORD_FRAMES", 5)
+    def test_record_utterance_hard_cap_returns_none_when_below_min_speech(self):
+        """When MAX_RECORD_FRAMES hit with fewer than MIN_SPEECH_FRAMES, return None."""
+        pipeline = Pipeline({})
+        raw_frame = np.ones(VAD_FRAME_SAMPLES, dtype=np.int16) * 100
+        mock_stream = MagicMock()
+        mock_stream.read.return_value = (raw_frame, None)
+        mock_vad = MagicMock()
+        mock_vad.is_speech.return_value = True  # Always speech — silence cutoff never fires
+
+        # MAX=5 frames < MIN_SPEECH_FRAMES=8 → returns None
+        result = pipeline._record_utterance(mock_stream, mock_vad)
+
+        assert result is None
+
+    @patch("voice.pipeline.MAX_RECORD_FRAMES", 15)
+    def test_record_utterance_hard_cap_returns_audio_when_enough_frames(self):
+        """When MAX_RECORD_FRAMES hit with enough frames, return float32 audio."""
+        pipeline = Pipeline({})
+        raw_frame = np.ones(VAD_FRAME_SAMPLES, dtype=np.int16) * 100
+        mock_stream = MagicMock()
+        mock_stream.read.return_value = (raw_frame, None)
+        mock_vad = MagicMock()
+        mock_vad.is_speech.return_value = True  # Always speech
+
+        # MAX=15 frames >= MIN_SPEECH_FRAMES=8 → returns audio
+        result = pipeline._record_utterance(mock_stream, mock_vad)
+
+        assert result is not None
+        assert isinstance(result, np.ndarray)
+        assert result.dtype == np.float32

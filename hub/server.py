@@ -1,5 +1,8 @@
 """IRIS Hub — FastAPI + WebSocket server."""
+import asyncio
 import os
+from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -14,7 +17,74 @@ from pydantic import BaseModel
 
 from hub import brain, memory
 
-app = FastAPI(title="IRIS Hub")
+_STATIC = Path(__file__).parent / "static"
+
+# Session activity tracking: session_id -> {"ws": WebSocket, "turn_count": int, "last_message_at": datetime, "checkin_sent": bool, "tier2_sent": bool}
+_active_sessions: dict = {}
+
+
+async def _silence_monitor() -> None:
+    """Monitor silence in active sessions and send check-ins or close."""
+    while True:
+        await asyncio.sleep(30)
+        try:
+            # Use list() for safe iteration during potential modifications
+            for session_id, info in list(_active_sessions.items()):
+                ws = info.get("ws")
+                if not ws:
+                    continue
+
+                now = datetime.now(timezone.utc)
+                last_msg_time = info.get("last_message_at")
+                if not last_msg_time:
+                    continue
+
+                elapsed = (now - last_msg_time).total_seconds()
+
+                # 3 min: send check-in
+                if elapsed >= 180 and not info.get("checkin_sent"):
+                    try:
+                        await ws.send_json({
+                            "type": "token",
+                            "text": "Still with you boss — take your time."
+                        })
+                        await ws.send_json({"type": "done"})
+                        info["checkin_sent"] = True
+                    except Exception:
+                        pass
+
+                # 10 min: send tier-2 message and mark warm
+                if elapsed >= 600 and not info.get("tier2_sent"):
+                    try:
+                        await ws.send_json({
+                            "type": "token",
+                            "text": "I'll be here when you're ready — just say IRIS."
+                        })
+                        await ws.send_json({"type": "done"})
+                        info["tier2_sent"] = True
+                        memory.set_session_warm(session_id)
+                    except Exception:
+                        pass
+
+                # 30 min: close session
+                if elapsed >= 1800:
+                    try:
+                        asyncio.create_task(brain.close_session_externally(session_id, ws))
+                    except Exception:
+                        pass
+                    _active_sessions.pop(session_id, None)
+        except Exception:
+            pass
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    memory.init_db()
+    asyncio.create_task(_silence_monitor())
+    yield
+
+
+app = FastAPI(title="IRIS Hub", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -23,16 +93,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-_STATIC = Path(__file__).parent / "static"
 if _STATIC.exists():
     app.mount("/static", StaticFiles(directory=str(_STATIC)), name="static")
 
 _connected_clients: set[WebSocket] = set()
-
-
-@app.on_event("startup")
-async def startup() -> None:
-    memory.init_db()
 
 
 @app.get("/")
@@ -57,13 +121,53 @@ async def websocket_endpoint(ws: WebSocket) -> None:
     await ws.accept()
     _connected_clients.add(ws)
     session_id = memory.start_session()
+    turn_count = 0
+
+    # Register session in active tracking
+    _active_sessions[session_id] = {
+        "ws": ws,
+        "turn_count": 0,
+        "last_message_at": datetime.now(timezone.utc),
+        "checkin_sent": False,
+        "tier2_sent": False,
+    }
+
     try:
         while True:
             data = await ws.receive_json()
             if data.get("type") == "message":
                 text = data.get("text", "").strip()
                 if text:
-                    await brain.process_turn(text, ws, session_id=session_id)
+                    turn_count += 1
+
+                    # Update activity timestamp and reset silence counters
+                    if session_id in _active_sessions:
+                        _active_sessions[session_id].update({
+                            "last_message_at": datetime.now(timezone.utc),
+                            "turn_count": turn_count,
+                            "checkin_sent": False,
+                            "tier2_sent": False,
+                        })
+
+                    # Process turn
+                    session_closed = await brain.process_turn(
+                        text,
+                        ws,
+                        session_id=session_id,
+                        turn_number=turn_count,
+                    )
+
+                    # If session was closed, start a new one
+                    if session_closed:
+                        session_id = memory.start_session()
+                        turn_count = 0
+                        _active_sessions[session_id] = {
+                            "ws": ws,
+                            "turn_count": 0,
+                            "last_message_at": datetime.now(timezone.utc),
+                            "checkin_sent": False,
+                            "tier2_sent": False,
+                        }
     except WebSocketDisconnect:
         pass
     except Exception as e:
@@ -73,6 +177,7 @@ async def websocket_endpoint(ws: WebSocket) -> None:
             pass
     finally:
         _connected_clients.discard(ws)
+        _active_sessions.pop(session_id, None)
 
 
 # Pydantic models for REST API
