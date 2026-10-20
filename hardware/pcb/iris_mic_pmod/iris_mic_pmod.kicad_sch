@@ -157,18 +157,23 @@
   (wire (pts (xy 108 101.19) (xy 123.65 95.08)) (stroke (width 0) (type default)) (uuid "a1010007-0000-0000-0000-000000000000"))
   (wire (pts (xy 109.19 87.46) (xy 113 87.46)) (stroke (width 0) (type default)) (uuid "a1010008-0000-0000-0000-000000000000"))
   (wire (pts (xy 116.81 87.46) (xy 123.65 87.46)) (stroke (width 0) (type default)) (uuid "a1010009-0000-0000-0000-000000000000"))
+  (wire (pts (xy 123.65 88.73) (xy 123.65 90.00)) (stroke (width 0) (type default)) (uuid "b1010001-0000-0000-0000-000000000000"))
+  (wire (pts (xy 123.65 95.08) (xy 123.65 96.35)) (stroke (width 0) (type default)) (uuid "b1010002-0000-0000-0000-000000000000"))
+  (wire (pts (xy 169.92 96.35) (xy 174.92 96.35)) (stroke (width 0) (type default)) (uuid "b1020001-0000-0000-0000-000000000000"))
+  (wire (pts (xy 169.92 93.81) (xy 174.92 93.81)) (stroke (width 0) (type default)) (uuid "b1020002-0000-0000-0000-000000000000"))
+  (wire (pts (xy 169.92 91.27) (xy 174.92 91.27)) (stroke (width 0) (type default)) (uuid "b1020003-0000-0000-0000-000000000000"))
 
-  (global_label "I2S_DATA" (shape bidir) (at 138 92.54 0) (fields_autoplaced) (effects (font (size 1.27 1.27) (thickness 0.15)) (justify left)) (uuid "a1020001-0000-0000-0000-000000000000"))
-  (global_label "I2S_CLK" (shape bidir) (at 121 92.54 180) (fields_autoplaced) (effects (font (size 1.27 1.27) (thickness 0.15)) (justify right)) (uuid "a1020002-0000-0000-0000-000000000000"))
-  (global_label "I2S_WS" (shape bidir) (at 138 87.46 0) (fields_autoplaced) (effects (font (size 1.27 1.27) (thickness 0.15)) (justify left)) (uuid "a1020003-0000-0000-0000-000000000000"))
-
-  (label "L_R" (at 109.19 87.46 0) (fields_autoplaced) (effects (font (size 1.27 1.27) (thickness 0.15)) (justify left bottom)) (uuid "a1030001-0000-0000-0000-000000000000"))
+  (global_label "I2S_DATA" (shape bidirectional) (at 138 92.54 0) (fields_autoplaced) (effects (font (size 1.27 1.27) (thickness 0.15)) (justify left)) (uuid "a1020001-0000-0000-0000-000000000000"))
+  (global_label "I2S_CLK" (shape bidirectional) (at 121 92.54 180) (fields_autoplaced) (effects (font (size 1.27 1.27) (thickness 0.15)) (justify right)) (uuid "a1020002-0000-0000-0000-000000000000"))
+  (global_label "I2S_WS" (shape bidirectional) (at 138 87.46 0) (fields_autoplaced) (effects (font (size 1.27 1.27) (thickness 0.15)) (justify left)) (uuid "a1020003-0000-0000-0000-000000000000"))
+  (global_label "I2S_DATA" (shape bidirectional) (at 169.92 96.35 180) (fields_autoplaced) (effects (font (size 1.27 1.27) (thickness 0.15)) (justify right)) (uuid "b2010001-0000-0000-0000-000000000000"))
+  (global_label "I2S_CLK" (shape bidirectional) (at 169.92 93.81 180) (fields_autoplaced) (effects (font (size 1.27 1.27) (thickness 0.15)) (justify right)) (uuid "b2010002-0000-0000-0000-000000000000"))
+  (global_label "I2S_WS" (shape bidirectional) (at 169.92 91.27 180) (fields_autoplaced) (effects (font (size 1.27 1.27) (thickness 0.15)) (justify right)) (uuid "b2010003-0000-0000-0000-000000000000"))
 
   (no_connect (at 185.08 96.35) (uuid "a1040001-0000-0000-0000-000000000000"))
   (no_connect (at 185.08 93.81) (uuid "a1040002-0000-0000-0000-000000000000"))
   (no_connect (at 185.08 91.27) (uuid "a1040003-0000-0000-0000-000000000000"))
   (no_connect (at 185.08 88.73) (uuid "a1040004-0000-0000-0000-000000000000"))
-  (no_connect (at 174.92 91.27) (uuid "a1040005-0000-0000-0000-000000000000"))
   (no_connect (at 174.92 88.73) (uuid "a1040006-0000-0000-0000-000000000000"))
 
   (symbol (lib_id "Microphone:SPH0645LM4H") (at 130 90 0) (unit 1) (in_bom yes) (on_board yes) (dnp no) (fields_autoplaced yes)
@@ -405,6 +410,26 @@
       (project "iris_mic_pmod"
         (path "/a1000001-0000-0000-0000-000000000000"
           (reference "#PWR06") (unit 1)
+        )
+      )
+    )
+  )
+
+  (symbol (lib_id "power:GND") (at 109.19 87.46 0) (unit 1) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "b3010001-0000-0000-0000-000000000000")
+    (property "Reference" "#PWR07" (at 109.19 93.729 0) (hide yes)
+      (effects (font (size 1.27 1.27))))
+    (property "Value" "GND" (at 109.19 91.44 0)
+      (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 109.19 87.46 0)
+      (effects (font (size 1.27 1.27)) (hide yes)))
+    (property "Datasheet" "" (at 109.19 87.46 0)
+      (effects (font (size 1.27 1.27)) (hide yes)))
+    (pin "1" (uuid "b3010001-0000-0000-0000-000000000001"))
+    (instances
+      (project "iris_mic_pmod"
+        (path "/a1000001-0000-0000-0000-000000000000"
+          (reference "#PWR07") (unit 1)
         )
       )
     )

@@ -1,0 +1,192 @@
+** Drc report for iris_mic_pmod.kicad_pcb **
+** Created on 2026-10-16T11:55:12 **
+** Report includes: Errors, Warnings, Exclusions **
+
+** Found 38 DRC violations **
+[tracks_crossing]: Tracks crossing
+    Local override; error
+    @(9.4800 mm, 8.0000 mm): Track [GND] on F.Cu, length 1.5000 mm
+    @(8.5200 mm, 7.0000 mm): Track [+3V3] on F.Cu, length 3.9800 mm
+[tracks_crossing]: Tracks crossing
+    Local override; error
+    @(8.5200 mm, 15.0000 mm): Track [+3V3] on F.Cu, length 3.9800 mm
+    @(9.4800 mm, 14.0000 mm): Track [GND] on F.Cu, length 2.5000 mm
+[shorting_items]: Items shorting two nets (nets GND and I2S_CLK)
+    Local override; error
+    @(5.5000 mm, 10.3650 mm): Track [GND] on B.Cu, length 11.6900 mm
+    @(17.1900 mm, 11.0000 mm): PTH pad 3 [I2S_CLK] of J1
+[shorting_items]: Items shorting two nets (nets GND and +3V3)
+    Local override; error
+    @(9.4800 mm, 6.5000 mm): Via [GND] on F.Cu - B.Cu
+    @(8.5200 mm, 7.0000 mm): Track [+3V3] on F.Cu, length 3.9800 mm
+[shorting_items]: Items shorting two nets (nets I2S_CLK and GND)
+    Local override; error
+    @(24.8100 mm, 9.0000 mm): Track [I2S_CLK] on B.Cu, length 2.0000 mm
+    @(24.8100 mm, 11.0000 mm): PTH pad 9 [GND] of J1
+[shorting_items]: Items shorting two nets (nets I2S_CLK and GND)
+    Local override; error
+    @(17.1900 mm, 11.0000 mm): PTH pad 3 [I2S_CLK] of J1
+    @(17.1900 mm, 11.0000 mm): Track [GND] on B.Cu, length 2.5400 mm
+[shorting_items]: Items shorting two nets (nets +3V3 and I2S_DATA)
+    Local override; error
+    @(27.3500 mm, 11.0000 mm): PTH pad 11 [+3V3] of J1
+    @(28.5000 mm, 11.0000 mm): Track [I2S_DATA] on B.Cu, length 1.1500 mm
+[shorting_items]: Items shorting two nets (nets <no net> and I2S_WS)
+    Local override; error
+    @(22.2700 mm, 11.0000 mm): PTH pad 7 [<no net>] of J1
+    @(21.0000 mm, 11.0000 mm): Track [I2S_WS] on B.Cu, length 1.2700 mm
+[shorting_items]: Items shorting two nets (nets I2S_DATA and +3V3)
+    Local override; error
+    @(14.6500 mm, 11.0000 mm): PTH pad 1 [I2S_DATA] of J1
+    @(12.5000 mm, 11.0000 mm): Track [+3V3] on F.Cu, length 2.1500 mm
+[shorting_items]: Items shorting two nets (nets <no net> and I2S_CLK)
+    Local override; error
+    @(19.7300 mm, 8.4600 mm): PTH pad 6 [<no net>] of J1
+    @(9.0000 mm, 9.0000 mm): Track [I2S_CLK] on B.Cu, length 15.8100 mm
+[shorting_items]: Items shorting two nets (nets GND and I2S_CLK)
+    Local override; error
+    @(17.1900 mm, 10.3650 mm): Track [GND] on B.Cu, length 0.6350 mm
+    @(17.1900 mm, 11.0000 mm): PTH pad 3 [I2S_CLK] of J1
+[clearance]: Clearance violation ( clearance 0.2000 mm; actual 0.1681 mm)
+    Local override; error
+    @(9.4800 mm, 16.5000 mm): Via [GND] on F.Cu - B.Cu
+    @(9.0000 mm, 12.8000 mm): Track [I2S_DATA] on B.Cu, length 3.2000 mm
+[clearance]: Clearance violation ( clearance 0.2000 mm; actual 0.1750 mm)
+    Local override; error
+    @(28.5000 mm, 16.0000 mm): Track [I2S_DATA] on B.Cu, length 5.0000 mm
+    @(27.3500 mm, 11.0000 mm): PTH pad 11 [+3V3] of J1
+[clearance]: Clearance violation ( clearance 0.2000 mm; actual 0.1250 mm)
+    Local override; error
+    @(5.5000 mm, 16.5000 mm): Track [GND] on B.Cu, length 3.9800 mm
+    @(9.0000 mm, 12.8000 mm): Track [I2S_DATA] on B.Cu, length 3.2000 mm
+[solder_mask_bridge]: Rear solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(28.5000 mm, 11.0000 mm): Track [I2S_DATA] on B.Cu, length 1.1500 mm
+    @(27.3500 mm, 11.0000 mm): PTH pad 11 [+3V3] of J1
+[solder_mask_bridge]: Front solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(12.5000 mm, 11.0000 mm): Track [+3V3] on F.Cu, length 2.1500 mm
+    @(14.6500 mm, 11.0000 mm): PTH pad 1 [I2S_DATA] of J1
+[solder_mask_bridge]: Rear solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(5.5000 mm, 10.3650 mm): Track [GND] on B.Cu, length 11.6900 mm
+    @(14.6500 mm, 11.0000 mm): PTH pad 1 [I2S_DATA] of J1
+[solder_mask_bridge]: Rear solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(9.0000 mm, 9.0000 mm): Track [I2S_CLK] on B.Cu, length 15.8100 mm
+    @(14.6500 mm, 8.4600 mm): PTH pad 2 [<no net>] of J1
+[solder_mask_bridge]: Rear solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(21.0000 mm, 11.0000 mm): Track [I2S_WS] on B.Cu, length 1.2700 mm
+    @(22.2700 mm, 11.0000 mm): PTH pad 7 [<no net>] of J1
+[solder_mask_bridge]: Rear solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(5.5000 mm, 10.3650 mm): Track [GND] on B.Cu, length 11.6900 mm
+    @(17.1900 mm, 11.0000 mm): PTH pad 3 [I2S_CLK] of J1
+[solder_mask_bridge]: Rear solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(9.0000 mm, 9.0000 mm): Track [I2S_CLK] on B.Cu, length 15.8100 mm
+    @(17.1900 mm, 8.4600 mm): PTH pad 4 [<no net>] of J1
+[solder_mask_bridge]: Rear solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(17.1900 mm, 10.3650 mm): Track [GND] on B.Cu, length 0.6350 mm
+    @(17.1900 mm, 11.0000 mm): PTH pad 3 [I2S_CLK] of J1
+[solder_mask_bridge]: Rear solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(9.0000 mm, 9.0000 mm): Track [I2S_CLK] on B.Cu, length 15.8100 mm
+    @(19.7300 mm, 8.4600 mm): PTH pad 6 [<no net>] of J1
+[solder_mask_bridge]: Rear solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(17.1900 mm, 11.0000 mm): Track [GND] on B.Cu, length 2.5400 mm
+    @(17.1900 mm, 11.0000 mm): PTH pad 3 [I2S_CLK] of J1
+[solder_mask_bridge]: Rear solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(9.0000 mm, 9.0000 mm): Track [I2S_CLK] on B.Cu, length 15.8100 mm
+    @(22.2700 mm, 8.4600 mm): PTH pad 8 [<no net>] of J1
+[solder_mask_bridge]: Rear solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(9.0000 mm, 9.0000 mm): Track [I2S_CLK] on B.Cu, length 15.8100 mm
+    @(24.8100 mm, 8.4600 mm): PTH pad 10 [GND] of J1
+[solder_mask_bridge]: Rear solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(24.8100 mm, 9.0000 mm): Track [I2S_CLK] on B.Cu, length 2.0000 mm
+    @(24.8100 mm, 8.4600 mm): PTH pad 10 [GND] of J1
+[solder_mask_bridge]: Rear solder mask aperture bridges items with different nets
+    Rule: board setup solder mask min width; error
+    @(24.8100 mm, 9.0000 mm): Track [I2S_CLK] on B.Cu, length 2.0000 mm
+    @(24.8100 mm, 11.0000 mm): PTH pad 9 [GND] of J1
+[track_dangling]: Track has unconnected end
+    Local override; warning
+    @(17.1900 mm, 11.0000 mm): Track [GND] on B.Cu, length 2.5400 mm
+[lib_footprint_issues]: The current configuration does not include the footprint library 'Microphone'
+    Local override; warning
+    @(9.0000 mm, 11.0000 mm): Footprint U1
+[lib_footprint_mismatch]: Footprint 'C_0402_1005Metric' does not match copy in library 'Capacitor_SMD'
+    Local override; warning
+    @(9.0000 mm, 8.0000 mm): Footprint C1
+[lib_footprint_mismatch]: Footprint 'C_0402_1005Metric' does not match copy in library 'Capacitor_SMD'
+    Local override; warning
+    @(9.0000 mm, 14.0000 mm): Footprint C2
+[lib_footprint_mismatch]: Footprint 'R_0402_1005Metric' does not match copy in library 'Resistor_SMD'
+    Local override; warning
+    @(7.0000 mm, 14.0000 mm): Footprint R1
+[lib_footprint_mismatch]: Footprint 'PinHeader_2x06_P2.54mm_Vertical' does not match copy in library 'Connector_PinHeader_2.54mm'
+    Local override; warning
+    @(21.0000 mm, 11.0000 mm): Footprint J1
+[silk_over_copper]: Silkscreen clipped by solder mask
+    Local override; warning
+    @(9.0000 mm, 8.5000 mm): Reference field of U1
+    @(9.4800 mm, 8.0000 mm): Pad 2 [GND] of C1 on F.Cu
+[silk_over_copper]: Silkscreen clipped by solder mask
+    Local override; warning
+    @(9.0000 mm, 8.5000 mm): Reference field of U1
+    @(8.5200 mm, 8.0000 mm): Pad 1 [+3V3] of C1 on F.Cu
+[silk_over_copper]: Silkscreen clipped by solder mask
+    Local override; warning
+    @(16.0000 mm, 11.0000 mm): Reference field of J1
+    @(17.1900 mm, 11.0000 mm): PTH pad 3 [I2S_CLK] of J1
+[silk_over_copper]: Silkscreen clipped by solder mask
+    Local override; warning
+    @(16.0000 mm, 11.0000 mm): Reference field of J1
+    @(14.6500 mm, 11.0000 mm): PTH pad 1 [I2S_DATA] of J1
+
+** Found 7 unconnected pads **
+[unconnected_items]: Missing connection between items
+    Local override; error
+    @(17.1900 mm, 10.3650 mm): Track [GND] on B.Cu, length 0.6350 mm
+    @(24.8100 mm, 11.0000 mm): PTH pad 9 [GND] of J1
+[unconnected_items]: Missing connection between items
+    Local override; error
+    @(24.8100 mm, 11.0000 mm): PTH pad 9 [GND] of J1
+    @(24.8100 mm, 8.4600 mm): PTH pad 10 [GND] of J1
+[unconnected_items]: Missing connection between items
+    Local override; error
+    @(12.5000 mm, 11.0000 mm): Track [+3V3] on F.Cu, length 2.1500 mm
+    @(27.3500 mm, 11.0000 mm): PTH pad 11 [+3V3] of J1
+[unconnected_items]: Missing connection between items
+    Local override; error
+    @(27.3500 mm, 11.0000 mm): PTH pad 11 [+3V3] of J1
+    @(27.3500 mm, 8.4600 mm): PTH pad 12 [+3V3] of J1
+[unconnected_items]: Missing connection between items
+    Local override; error
+    @(14.6500 mm, 11.0000 mm): PTH pad 1 [I2S_DATA] of J1
+    @(9.0000 mm, 11.6350 mm): Track [I2S_DATA] on F.Cu, length 1.1650 mm
+[unconnected_items]: Missing connection between items
+    Local override; error
+    @(17.1900 mm, 11.0000 mm): PTH pad 3 [I2S_CLK] of J1
+    @(24.8100 mm, 9.0000 mm): Track [I2S_CLK] on B.Cu, length 2.0000 mm
+[unconnected_items]: Missing connection between items
+    Local override; error
+    @(21.0000 mm, 15.0000 mm): Track [I2S_WS] on B.Cu, length 4.0000 mm
+    @(19.7300 mm, 11.0000 mm): PTH pad 5 [I2S_WS] of J1
+
+** Found 0 Footprint errors **
+
+** Ignored checks **
+    - Footprint has no courtyard defined
+    - Track endpoint not centered on via
+    - Tuning profile track geometries
+    - Footprint doesn't match symbol's footprint filters
+    - Footprint component type doesn't match footprint pads
+
+** End of Report **

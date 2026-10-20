@@ -1,0 +1,73 @@
+** Drc report for iris_mic_pmod.kicad_pcb **
+** Created on 2026-10-16T16:04:19 **
+** Report includes: Errors, Warnings **
+
+** Found 15 DRC violations **
+[shorting_items]: Items shorting two nets (nets +3V3 and I2S_DATA)
+    Local override; error
+    @(8.5200 mm, 7.0000 mm): Track [+3V3] on B.Cu, length 9.0000 mm
+    @(9.0000 mm, 12.5000 mm): Via [I2S_DATA] on F.Cu - B.Cu
+[clearance]: Clearance violation ( clearance 0.2000 mm; actual 0.1050 mm)
+    Local override; error
+    @(9.0000 mm, 9.8000 mm): Track [I2S_CLK] on B.Cu, length 8.1900 mm
+    @(8.5200 mm, 7.0000 mm): Track [+3V3] on B.Cu, length 9.0000 mm
+[clearance]: Clearance violation ( clearance 0.2000 mm; actual 0.1400 mm)
+    Local override; error
+    @(9.4800 mm, 8.0000 mm): Track [GND] on F.Cu, length 2.5000 mm
+    @(10.2700 mm, 7.0000 mm): Via [+3V3] on F.Cu - B.Cu
+[clearance]: Clearance violation ( clearance 0.2000 mm; actual 0.1400 mm)
+    Local override; error
+    @(7.7300 mm, 5.5000 mm): Track [GND] on B.Cu, length 11.5000 mm
+    @(8.5200 mm, 7.0000 mm): Via [+3V3] on F.Cu - B.Cu
+[clearance]: Clearance violation ( clearance 0.2000 mm; actual 0.1400 mm)
+    Local override; error
+    @(8.5200 mm, 7.0000 mm): Via [+3V3] on F.Cu - B.Cu
+    @(7.7300 mm, 10.3650 mm): Track [GND] on F.Cu, length 4.8650 mm
+[clearance]: Clearance violation ( clearance 0.2000 mm; actual 0.1050 mm)
+    Local override; error
+    @(9.0000 mm, 12.5000 mm): Track [I2S_DATA] on B.Cu, length 5.6500 mm
+    @(8.5200 mm, 7.0000 mm): Track [+3V3] on B.Cu, length 9.0000 mm
+[lib_footprint_issues]: The current configuration does not include the footprint library 'Microphone'
+    Local override; warning
+    @(9.0000 mm, 11.0000 mm): Footprint U1
+[lib_footprint_mismatch]: Footprint 'C_0402_1005Metric' does not match copy in library 'Capacitor_SMD'
+    Local override; warning
+    @(9.0000 mm, 8.0000 mm): Footprint C1
+[lib_footprint_mismatch]: Footprint 'C_0402_1005Metric' does not match copy in library 'Capacitor_SMD'
+    Local override; warning
+    @(9.0000 mm, 14.0000 mm): Footprint C2
+[lib_footprint_mismatch]: Footprint 'R_0402_1005Metric' does not match copy in library 'Resistor_SMD'
+    Local override; warning
+    @(7.0000 mm, 14.0000 mm): Footprint R1
+[lib_footprint_mismatch]: Footprint 'PinHeader_2x06_P2.54mm_Vertical' does not match copy in library 'Connector_PinHeader_2.54mm'
+    Local override; warning
+    @(21.0000 mm, 11.0000 mm): Footprint J1
+[silk_over_copper]: Silkscreen clipped by solder mask
+    Local override; warning
+    @(9.0000 mm, 8.5000 mm): Reference field of U1
+    @(9.4800 mm, 8.0000 mm): Pad 2 [GND] of C1 on F.Cu
+[silk_over_copper]: Silkscreen clipped by solder mask
+    Local override; warning
+    @(9.0000 mm, 8.5000 mm): Reference field of U1
+    @(8.5200 mm, 8.0000 mm): Pad 1 [+3V3] of C1 on F.Cu
+[silk_over_copper]: Silkscreen clipped by solder mask
+    Local override; warning
+    @(16.0000 mm, 11.0000 mm): Reference field of J1
+    @(17.1900 mm, 11.0000 mm): PTH pad 3 [I2S_CLK] of J1
+[silk_over_copper]: Silkscreen clipped by solder mask
+    Local override; warning
+    @(16.0000 mm, 11.0000 mm): Reference field of J1
+    @(14.6500 mm, 11.0000 mm): PTH pad 1 [I2S_DATA] of J1
+
+** Found 0 unconnected pads **
+
+** Found 0 Footprint errors **
+
+** Ignored checks **
+    - Footprint has no courtyard defined
+    - Track endpoint not centered on via
+    - Tuning profile track geometries
+    - Footprint doesn't match symbol's footprint filters
+    - Footprint component type doesn't match footprint pads
+
+** End of Report **
