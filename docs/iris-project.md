@@ -60,12 +60,12 @@ Explored having IRIS write its project notes into an actual claude.ai Project in
 | `'claude' is not recognized` calling Claude Code CLI | Stale PATH in a terminal opened before Claude Code was installed — fixed with a fresh terminal window |
 | Wake word + VAD recording worked, but transcription kept returning "heard nothing usable" | Pulled `_last_clip.wav` directly and analyzed it — clip was ~99% silence (max amplitude 567 of ~32,000). Not a code bug — pointed at a microphone input level problem (wrong default input device, input volume too low/muted, or a physical mute switch) |
 
-### Current status
-- Pipeline (wake word → VAD → transcription → Claude Code CLI → response) is code-complete, confirmed working end-to-end at least once ("Did you figure out what time it is?" heard and processed correctly)
-- **Outstanding:** confirm the microphone input level fix, then a clean end-to-end retest
-- Tray app + Startup-shortcut setup are built and documented but not yet confirmed tested
-- Wake word: waiting on Picovoice access key + trained `.ppn` file; "computer" is the working fallback in the meantime
-- Confirm Claude Code CLI is installed and logged in (flagged as a next step)
+### Current status (as of 2026-10-20)
+- Pipeline: wake word → VAD → transcription (Moonshine) → hub WebSocket → Ollama → **Kokoro ONNX TTS** response; async pipeline, smart session lifecycle
+- Hub runs FastAPI + WebSocket + SQLite memory; clients connect over LAN or Cloudflare Tunnel
+- Wake word: using **openWakeWord** (OWW) — `voice/training/test_wake_word.py` for live score testing; custom model training still needed for "iris" keyword
+- TTS: Kokoro ONNX running locally; async pipeline avoids blocking on generation
+- **Outstanding:** confirm clean end-to-end retest with mic; wire FPGA UART trigger into voice pipeline
 
 ---
 
@@ -132,28 +132,29 @@ A small AI accelerator in Verilog that does real-time wake-word detection in har
 
 ### Architecture (input → compute → output)
 
-**1. Audio front-end (custom PCB, KiCad)**
-- MEMS microphone → anti-aliasing filter → ADC or PDM-to-PCM → clean digitized audio into the FPGA
-- Status: not yet designed
+**1. Audio front-end (custom PCB, KiCad) — `hardware/pcb/iris_mic_pmod/`**
+- MEMS microphone (SPH0645LM4H I²S) → decoupling caps + pull-up resistor → pmod connector → FPGA
+- Status: routed, gerbers exported. 15 DRC violations remain (1 shorting error + clearance violations, all marked local overrides). Pending: fix shorts and re-run DRC before ordering.
+- Testbenches: `hardware/tb/tb_iris_top_minimal.v` covers the full iris_top pipeline
 
-**2. FPGA compute (Basys 3, Artix-7 XC7A35T)**
-- Phase 1: single MAC (multiply-accumulate) unit in Verilog
-- Phase 2: chain MACs into a small systolic array
-- Phase 3: small neural net (2-3 layers) for keyword spotting, running on real audio from the PCB
-- Status: not started — begins once the ALU project (due Oct 31) wraps
+**2. FPGA compute (Basys 3, Artix-7 XC7A35T) — `hardware/rtl/`**
+- Phase 1: single MAC unit — ✅ done
+- Phase 2: systolic array — ✅ done
+- Phase 3: 40→64→2 MLP classifier (fixed-point INT16 weights, INT32 accumulators) — ✅ RTL complete, weight ROMs stubbed (`w1.mem`, `w2.mem`)
+- ML training pipeline: `hardware/ml/` — quantized weights exported from PyTorch, ready to load into Vivado block RAM
 
 **3. Link back to IRIS software**
-- Interface: UART, via the Basys 3's onboard USB-to-serial chip (simplest option, board supports it natively, a wake-word trigger only needs to send a small signal — SPI considered but unnecessary)
-- On detection: FPGA sends trigger over UART → IRIS process (listening on serial) takes over for the conversation/command handling
-- Status: not yet implemented
+- Interface: UART, via the Basys 3's onboard USB-to-serial chip
+- On detection: FPGA asserts `led_wake` + sends trigger over UART → voice pipeline takes over
+- Status: UART TX in RTL, serial listener in voice pipeline not yet wired up
 
 ### Phase timeline
 | Phase | What | Status |
 |---|---|---|
-| 1 | MAC unit in Verilog | Not started |
-| 2 | Systolic array (chained MACs) | Not started |
-| 3 | Wake-word neural net on FPGA + audio front-end PCB | Not started |
-| 3a | Custom audio front-end PCB (KiCad) | Not started |
+| 1 | MAC unit in Verilog | ✅ Done |
+| 2 | Systolic array (chained MACs) | ✅ Done |
+| 3 | Wake-word NN (40→64→2 MLP, fixed-point) on FPGA | ✅ RTL + weight ROMs implemented |
+| 3a | Audio front-end PCB (KiCad) — MEMS mic pmod | 🔄 In progress — routed, gerbers exported, 15 DRC violations open |
 | 4 (stretch) | Full IRIS integration over UART, live demo | Not started |
 
 ### Relationship to the other project pipeline
@@ -164,9 +165,9 @@ Runs in parallel with, not instead of:
 - Pipelined RISC-V stretch (due Feb 28, 2027)
 
 ### Open questions / decisions still needed
-- Exact neural net architecture for keyword spotting (size, quantization scheme)
-- ADC vs. PDM-to-PCM for the mic interface
-- Fixed-point number format for the MAC units
+- Fix 15 PCB DRC violations (1 shorting error between +3V3 and I2S_DATA is critical) before sending to fab
+- Wire up the UART serial listener in the voice pipeline to the FPGA trigger
+- Fill `w1.mem` / `w2.mem` weight ROMs with trained model weights
 - Timing for ordering the PCB (fab/shipping lead time)
 
 ---

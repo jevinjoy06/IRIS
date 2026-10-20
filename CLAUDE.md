@@ -23,17 +23,20 @@ Voice assistant + FPGA wake-word accelerator. Hub-and-spoke: GPU desktop runs th
 - Laptop: set `hub_url` to desktop LAN IP or tunnel URL
 
 ## Voice layer (shared pipeline)
-- Wake word → VAD recording → transcription (Moonshine) → hub WebSocket
+- Wake word (openWakeWord) → VAD recording → transcription (Moonshine) → hub WebSocket → Ollama → Kokoro ONNX TTS
+- Async pipeline: TTS non-blocking; smart session lifecycle
 - Set `KERAS_BACKEND=torch` before running
-- Wake word: `"computer"` fallback until Picovoice `.ppn` file is trained and added
+- Wake word: OWW model, fallback `"computer"`; live score test: `python voice/training/test_wake_word.py`
 - Config: `voice/config.json.template` → `voice/config.json`
 
 ## Hardware
 - Target: Basys 3 (Artix-7 XC7A35T)
-- Phase 1: single MAC unit (`hardware/rtl/mac_unit.v`)
-- Phase 2: systolic array
-- Phase 3: wake-word NN + audio front-end PCB (KiCad)
-- IRIS link: FPGA UART trigger → voice pipeline takes over
+- Phase 1: MAC unit — done (`hardware/rtl/mac_unit.v`)
+- Phase 2: systolic array — done
+- Phase 3: 40→64→2 MLP wake-word classifier — RTL + weight ROMs done (`hardware/rtl/`)
+- Phase 3a: audio front-end PCB — routed, gerbers in `hardware/pcb/iris_mic_pmod/gerbers/`; 15 DRC violations pending fix before fab
+- ML training pipeline: `hardware/ml/` — quantized INT16 weights for Vivado block RAM
+- IRIS link: FPGA UART trigger → voice pipeline (listener not yet wired)
 - Testbenches: `hardware/tb/`, constraints: `hardware/constraints/basys3.xdc`
 
 ## Secrets
