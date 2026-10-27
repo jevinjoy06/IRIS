@@ -18,22 +18,54 @@ from hub.tools.registry import TOOL_DEFINITIONS, async_dispatch
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434/v1")
 MODEL = os.environ.get("OLLAMA_MODEL", "llama3.1:8b")
 
-SYSTEM_PROMPT = """You are IRIS — Intelligent Responsive Interface System — Jevin's personal AI assistant on his GPU PC.
+SYSTEM_PROMPT = """You are IRIS, Jevin's personal AI assistant running on his GPU PC. Personality: direct, confident, dry humor, call him "boss" occasionally but not every sentence. No filler words ("Absolutely!", "Great question!", "Certainly!"). Keep responses brief.
 
-Think FRIDAY from Iron Man. Sharp, loyal, gets things done. You call him "boss" naturally (not every sentence). Brief by default. No filler phrases ("Absolutely!", "Great question!"). Confident. Dry humor when it fits. Brief confirmations when done. Direct when something goes wrong.
+## WHEN TO USE TOOLS
+Only call a tool when you need data you cannot produce yourself:
+- file_read / file_write / file_list — boss asks about files on his machine
+- web_search — boss asks about current events or something to look up online
+- shell_run — boss asks you to run a command or script
+- clipboard_read / clipboard_write — boss asks about his clipboard
+- system_info — boss asks about his PC hardware or status
+- notify — boss asks you to send a desktop notification
+- timer_set — boss asks to set a timer
+- window_list / window_focus / app_open — boss asks about open windows or apps
+- memory_recall — boss specifically asks "what did we talk about" or "do you remember X"
+- memory_write — boss explicitly says "remember this" or "save this"
 
-You have access to his file system, the web, and a persistent world model you can read and write. You remember facts about his life, projects, preferences, and commitments across all conversations.
+## NEVER USE TOOLS FOR
+- Greetings or small talk ("hello", "how are you", "what's up")
+- Questions about your own identity ("what's your name", "who are you", "what are you")
+- General knowledge or questions you already know the answer to
+- Anything a person could answer without looking something up
 
-Memory:
-- Facts are extracted and stored automatically after each turn. Do NOT call memory_write during your response.
-- Only exception: boss explicitly says "remember this" or "save this" — then call memory_write once with what he wants saved.
-
-Tools:
-- Only call a tool when you genuinely need external data or action to answer. Never call a tool to answer factual questions you already know (your name, the date, general knowledge).
-- Call tools silently — never write tool call syntax or JSON in your response text.
-- Confirm before writing or deleting unless he's already indicated intent."""
+## OUTPUT RULES
+- Never output tool call JSON, function call syntax, or parameter dicts in your response text
+- Answer directly — no preamble, no restating the question
+- Facts about Jevin from memory are injected below when relevant"""
 
 _client = None
+
+# Words that indicate a tool is likely needed even in short messages
+_TOOL_KEYWORDS = {
+    "search", "find", "look up", "file", "folder", "open", "run", "execute",
+    "command", "remember", "save", "clipboard", "notify", "notification",
+    "timer", "alarm", "window", "app", "application", "install", "download",
+    "recall", "last time", "did we", "yesterday", "last week", "system",
+    "cpu", "ram", "disk", "battery", "temperature", "weather", "news",
+}
+
+
+def _needs_tools(text: str) -> bool:
+    """Return False for purely conversational messages that don't need tools.
+
+    Short messages (< 60 chars) only get tools if they contain a tool-trigger
+    keyword. Longer messages always get tools (safe default).
+    """
+    if len(text.strip()) >= 60:
+        return True
+    text_lower = text.lower()
+    return any(kw in text_lower for kw in _TOOL_KEYWORDS)
 
 
 def _get_client():
@@ -108,11 +140,12 @@ async def process_turn(
         tool_calls_map: dict[int, dict] = {}
         finish_reason = None
 
+        tools_for_turn = TOOL_DEFINITIONS if _needs_tools(user_text) else None
         try:
             stream = await client.chat.completions.create(
                 model=MODEL,
                 messages=messages,
-                tools=TOOL_DEFINITIONS,
+                tools=tools_for_turn,
                 stream=True,
             )
 
