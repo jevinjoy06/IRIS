@@ -25,11 +25,12 @@ Think FRIDAY from Iron Man. Sharp, loyal, gets things done. You call him "boss" 
 You have access to his file system, the web, and a persistent world model you can read and write. You remember facts about his life, projects, preferences, and commitments across all conversations.
 
 Memory:
-- After every turn you extract and store new facts. Relevant facts are injected below.
-- When you learn something worth keeping — a preference, deadline, project detail — write it with memory_write.
+- Facts are extracted and stored automatically after each turn. Do NOT call memory_write during your response.
+- Only exception: boss explicitly says "remember this" or "save this" — then call memory_write once with what he wants saved.
 
 Tools:
-- Use tools when they're the right answer. Don't ask permission for routine file reads or web searches.
+- Only call a tool when you genuinely need external data or action to answer. Never call a tool to answer factual questions you already know (your name, the date, general knowledge).
+- Call tools silently — never write tool call syntax or JSON in your response text.
 - Confirm before writing or deleting unless he's already indicated intent."""
 
 _client = None
@@ -261,26 +262,19 @@ Return ONLY the label text, nothing else."""
         pass
 
 
+_CLOSE_PHRASES = {
+    "goodbye", "good bye", "bye", "see you", "see ya", "cya",
+    "that's all", "thats all", "we're done", "were done",
+    "i'm done", "im done", "all set", "i'm all set", "im all set",
+    "thanks for your help", "we're good", "were good",
+    "no more questions", "that will be all", "see you later",
+}
+
+
 async def _detect_close_intent(user_text: str) -> bool:
-    """Detect if user is signaling conversation wrap-up."""
-    try:
-        client = _get_client()
-        prompt = f"""Is the user signaling they are wrapping up or ending the conversation?
-Examples of wrap-up: thanking, saying goodbye, "that's all", "we're good", "I'm all set", "thanks for your help", "see you later".
-
-User: {user_text}
-
-Respond with ONLY "yes" or "no"."""
-
-        result = await client.chat.completions.create(
-            model=MODEL,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=5,
-        )
-        answer = result.choices[0].message.content.strip().lower()
-        return answer.startswith("yes")
-    except Exception:
-        return False
+    """Detect if user is signaling conversation wrap-up via keyword match."""
+    text = user_text.lower().strip()
+    return any(phrase in text for phrase in _CLOSE_PHRASES)
 
 
 async def _write_session_summary(session_id: str) -> None:

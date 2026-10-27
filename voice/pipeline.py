@@ -177,12 +177,15 @@ class Pipeline:
                     last_speech_time = time.time()
 
                     # Transcribe
-                    print("[transcribe] processing…", end=" ", flush=True)
+                    dur_s = len(audio) / SAMPLE_RATE
+                    print(f"[transcribe] processing {dur_s:.1f}s clip...", end=" ", flush=True)
+                    t0 = time.perf_counter()
                     text = transcriber.transcribe(audio).strip()
+                    print(f"({(time.perf_counter() - t0) * 1000:.0f} ms)")
                     if not text:
                         print("(empty transcript)")
                         continue
-                    print(f'"{text}"')
+                    print(f'You: "{text}"')
 
                     # Check for stop phrase
                     text_lower = text.lower().strip()
@@ -235,14 +238,19 @@ class Pipeline:
 
     async def _send_and_speak(self, text: str, tts: TTS, ws) -> bool:
         """Send text to hub over shared WS, stream response, speak aloud. Return success."""
-        print("IRIS:", end=" ", flush=True)
         try:
+            t_send = time.perf_counter()
             await ws.send(json.dumps({"type": "message", "text": text}))
             response_text = ""
+            first_token = True
 
             async for raw_msg in ws:
                 msg = json.loads(raw_msg)
                 if msg["type"] == "token":
+                    if first_token:
+                        ttft = (time.perf_counter() - t_send) * 1000
+                        print(f"IRIS: [first token {ttft:.0f} ms] ", end="", flush=True)
+                        first_token = False
                     token = msg["text"]
                     print(token, end="", flush=True)
                     response_text += token
@@ -250,11 +258,14 @@ class Pipeline:
                     print(f"\n[hub error] {msg.get('text', '')}")
                     return False
                 elif msg["type"] == "done":
-                    print()
+                    total_ms = (time.perf_counter() - t_send) * 1000
+                    print(f"\n[hub] total {total_ms:.0f} ms, {len(response_text)} chars")
                     break
 
             if response_text:
+                t_tts = time.perf_counter()
                 tts.speak(response_text)
+                print(f"[tts] synthesis queued ({(time.perf_counter() - t_tts) * 1000:.0f} ms to queue)")
 
             return True
         except Exception as exc:
