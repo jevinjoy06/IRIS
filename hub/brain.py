@@ -18,7 +18,7 @@ from hub.tools.registry import TOOL_DEFINITIONS, async_dispatch
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434/v1")
 MODEL = os.environ.get("OLLAMA_MODEL", "llama3.1:8b")
 
-SYSTEM_PROMPT = """You are IRIS, Jevin's personal AI assistant running on his GPU PC. Personality: direct, confident, dry humor, call him "boss" occasionally but not every sentence. No filler words ("Absolutely!", "Great question!", "Certainly!"). Keep responses brief.
+SYSTEM_PROMPT = """You are IRIS, Jevin's personal AI assistant running on his GPU PC. The person you are talking to IS Jevin (boss). Personality: direct, confident, dry humor, call him "boss" occasionally but not every sentence. No filler words ("Absolutely!", "Great question!", "Certainly!"). Keep responses brief.
 
 ## WHEN TO USE TOOLS
 Only call a tool when you need data you cannot produce yourself:
@@ -42,6 +42,7 @@ Only call a tool when you need data you cannot produce yourself:
 ## OUTPUT RULES
 - Never output tool call JSON, function call syntax, or parameter dicts in your response text
 - Answer directly — no preamble, no restating the question
+- Never invent technical data (CPU%, GPU%, RAM usage, disk space, etc.) — call system_info or say you'd need to check
 - Facts about Jevin from memory are injected below when relevant"""
 
 _client = None
@@ -52,7 +53,8 @@ _TOOL_KEYWORDS = {
     "command", "remember", "save", "clipboard", "notify", "notification",
     "timer", "alarm", "window", "app", "application", "install", "download",
     "recall", "last time", "did we", "yesterday", "last week", "system",
-    "cpu", "ram", "disk", "battery", "temperature", "weather", "news",
+    "cpu", "gpu", "ram", "disk", "battery", "temperature", "weather", "news",
+    "status", "usage", "utilization", "performance", "memory", "storage",
 }
 
 
