@@ -243,9 +243,14 @@ async def process_turn(
 
 
 async def _extract_facts(user_text: str, assistant_response: str, client) -> None:
-    prompt = f"""Extract facts from this conversation worth storing in a personal AI assistant's world model.
+    prompt = f"""Extract personal facts about Jevin (the user) from this conversation worth storing long-term.
+
+ONLY extract facts about: Jevin's preferences, projects, deadlines, habits, personal details, ongoing tasks, or explicit statements he made about himself.
+
+DO NOT extract: system metrics, hardware stats, CPU/GPU/RAM percentages, real-time data, anything the assistant said about system state, or general knowledge.
+
 Return a JSON array. Each element: {{"content": "...", "tier": "core|relevant|archive", "importance": 0.0-1.0, "tags": [...]}}
-Return [] if nothing is worth storing. Return ONLY the JSON array, no other text.
+Return [] if nothing personal about Jevin is worth storing. Return ONLY the JSON array, no other text.
 
 User: {user_text}
 Assistant: {assistant_response}"""
