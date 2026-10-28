@@ -19,7 +19,7 @@ from hub.tools.registry import TOOL_DEFINITIONS, async_dispatch
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434/v1")
 MODEL = os.environ.get("OLLAMA_MODEL", "llama3.1:8b")
 
-SYSTEM_PROMPT = """You are IRIS, Jevin's personal AI assistant running on his GPU PC. Personality: direct, confident, dry humor, call him "boss" occasionally but not every sentence. No filler words ("Absolutely!", "Great question!", "Certainly!"). Keep responses brief.
+SYSTEM_PROMPT = """You are IRIS, Jevin's personal AI assistant running on his GPU PC. The person you are talking to IS Jevin (boss). Personality: direct, confident, dry humor, call him "boss" occasionally but not every sentence. No filler words ("Absolutely!", "Great question!", "Certainly!"). Keep responses brief.
 
 ## WHEN TO USE TOOLS
 Only call a tool when you need data you cannot produce yourself:
@@ -46,6 +46,7 @@ You have NO way to close, kill, or quit an app or window — only list, focus, a
 ## OUTPUT RULES
 - Never output tool call JSON, function call syntax, or parameter dicts in your response text
 - Answer directly — no preamble, no restating the question
+- Never invent technical data (CPU%, GPU%, RAM usage, disk space, etc.) — call system_info or say you'd need to check
 - Facts about Jevin from memory are injected below when relevant
 
 ## GROUNDING — NON-NEGOTIABLE
@@ -62,7 +63,8 @@ _TOOL_KEYWORDS = {
     "timer", "alarm", "window", "app", "application", "install", "download",
     "close", "kill", "quit", "exit",
     "recall", "last time", "did we", "yesterday", "last week", "system",
-    "cpu", "ram", "disk", "battery", "temperature", "weather", "news",
+    "cpu", "gpu", "ram", "disk", "battery", "temperature", "weather", "news",
+    "status", "usage", "utilization", "performance", "memory", "storage",
 }
 
 # Whole-word/phrase matchers, so "research" doesn't match "search" and
@@ -354,7 +356,7 @@ async def process_turn(
 async def _extract_facts(user_text: str, assistant_response: str, client) -> None:
     prompt = f"""Extract facts from this conversation worth storing LONG-TERM in a personal AI assistant's world model.
 
-Only extract durable facts about the user: stable preferences, identity, relationships, ongoing projects, or things they explicitly asked to be remembered. Do NOT extract: greetings/small talk, the assistant's own identity or capabilities, one-off tool results (file listings, system stats, search results), transient status updates, or anything that will be stale within hours.
+Only extract durable facts about the user: stable preferences, identity, relationships, ongoing projects, or things they explicitly asked to be remembered. Do NOT extract: greetings/small talk, the assistant's own identity or capabilities, one-off tool results (file listings, search results), transient status updates, system metrics or hardware stats (CPU/GPU/RAM/disk percentages, real-time system state), or anything that will be stale within hours.
 
 "core" tier is reserved for facts the assistant should basically always know (e.g. the user's name, role, long-running projects) — use it sparingly, at most one fact here. Most things belong in "relevant" or should not be stored at all.
 

@@ -28,6 +28,16 @@ Tracked during the Oct 2026 conversational testing pass. Not yet fixed — come 
 6. `hub/tools/shell.py`'s dangerous-command blocklist is regex/pattern-based and
    bypassable (e.g. PowerShell `Remove-Item -Recurse -Force` isn't caught). Flagged
    as a security observation, not exploited, not fixed.
+7. `/ws` has zero authentication and no Origin check (confirmed via grep — no
+   auth/token/secret handling anywhere in `server.py`), and the hub binds `0.0.0.0`
+   by default. Now that Tailscale is set up, the hub is also reachable from any
+   other network this desktop joins (public wifi, etc.), not just the tailnet —
+   anyone on the same LAN segment could connect and use `shell_run`/file tools with
+   no credential at all. Flagged by automated security review on this session's
+   commit. Worth at minimum a shared-secret handshake on connect, or restricting
+   `HUB_HOST` to the Tailscale interface specifically, before this leaves a fully
+   trusted network. Not fixed yet — personal-devices-only usage for now limits
+   exposure, but it's still a real gap.
 
 ## Untested surface
 
