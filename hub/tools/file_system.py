@@ -2,7 +2,7 @@
 import os
 from pathlib import Path
 
-_ALLOWED_ROOT = Path(os.environ.get("FILE_SYSTEM_ROOT", str(Path.home()))).resolve()
+_ALLOWED_ROOT = Path(os.environ.get("FILE_SYSTEM_ROOT") or str(Path.home())).resolve()
 
 
 def _safe_path(raw: str) -> Path:

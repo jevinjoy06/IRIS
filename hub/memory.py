@@ -68,6 +68,20 @@ def write_fact(
     now = datetime.now(timezone.utc).isoformat()
     tags_json = json.dumps(tags or [])
     with _connect() as conn:
+        # Dedup: an existing non-archived fact with the same content (case-insensitive)
+        # gets its importance/tier bumped instead of being duplicated.
+        existing = conn.execute(
+            "SELECT id, importance FROM facts WHERE tier != 'archive' AND lower(content) = lower(?)",
+            (content,),
+        ).fetchone()
+        if existing:
+            new_importance = max(existing["importance"], importance)
+            conn.execute(
+                "UPDATE facts SET importance = ?, tier = ?, last_accessed = ? WHERE id = ?",
+                (new_importance, tier, now, existing["id"]),
+            )
+            return existing["id"]
+
         cur = conn.execute(
             """INSERT INTO facts (tier, content, importance, tags, created_at)
                VALUES (?, ?, ?, ?, ?)""",
@@ -76,10 +90,11 @@ def write_fact(
         return cur.lastrowid
 
 
-def get_core_facts() -> list[str]:
+def get_core_facts(limit: int = 20) -> list[str]:
     with _connect() as conn:
         rows = conn.execute(
-            "SELECT id, content FROM facts WHERE tier = 'core' ORDER BY importance DESC"
+            "SELECT id, content FROM facts WHERE tier = 'core' ORDER BY importance DESC, created_at DESC LIMIT ?",
+            (limit,),
         ).fetchall()
     if rows:
         _bump_access([r["id"] for r in rows])

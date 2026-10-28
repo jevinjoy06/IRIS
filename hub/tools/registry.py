@@ -15,14 +15,14 @@ TOOL_DEFINITIONS = [
     _fn("file_read", "Read the contents of a file on the hub machine.", {
         "type": "object",
         "properties": {
-            "path": {"type": "string", "description": "Path relative to FILE_SYSTEM_ROOT"},
+            "path": {"type": "string", "description": "Bare relative path from FILE_SYSTEM_ROOT (the user's home folder), e.g. 'Documents/notes.txt'. No leading slash or backslash, and no '~' — those are rejected."},
         },
         "required": ["path"],
     }),
     _fn("file_write", "Write content to a file on the hub machine. Creates parent directories as needed.", {
         "type": "object",
         "properties": {
-            "path": {"type": "string", "description": "Path relative to FILE_SYSTEM_ROOT"},
+            "path": {"type": "string", "description": "Bare relative path from FILE_SYSTEM_ROOT (the user's home folder), e.g. 'Documents/notes.txt'. No leading slash or backslash, and no '~' — those are rejected."},
             "content": {"type": "string", "description": "Text content to write"},
         },
         "required": ["path", "content"],
@@ -30,7 +30,7 @@ TOOL_DEFINITIONS = [
     _fn("file_list", "List the contents of a directory on the hub machine.", {
         "type": "object",
         "properties": {
-            "path": {"type": "string", "description": "Directory path relative to FILE_SYSTEM_ROOT (empty = root)"},
+            "path": {"type": "string", "description": "Bare relative path from FILE_SYSTEM_ROOT (the user's home folder), e.g. 'Documents'. Leave empty for the root (home folder). No leading slash or backslash, and no '~' — those are rejected."},
         },
         "required": [],
     }),

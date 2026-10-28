@@ -39,7 +39,7 @@ def get_system_info() -> dict:
 
         # System info
         uname = platform.uname()
-        hostname = uname.nodename
+        hostname = uname.node
         os_name = uname.system
         os_version = uname.release
 

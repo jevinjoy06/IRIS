@@ -134,47 +134,60 @@ async def websocket_endpoint(ws: WebSocket) -> None:
 
     try:
         while True:
-            data = await ws.receive_json()
-            if data.get("type") == "message":
-                text = data.get("text", "").strip()
-                if text:
-                    turn_count += 1
+            try:
+                data = await ws.receive_json()
+            except WebSocketDisconnect:
+                raise
+            except Exception as e:
+                # Malformed frame (bad JSON, wrong types, etc.) — report it and
+                # keep listening instead of killing the whole session over one
+                # bad message. A voice client hiccup shouldn't end the conversation.
+                await ws.send_json({"type": "error", "text": f"Malformed message: {e}"})
+                continue
 
-                    # Update activity timestamp and reset silence counters
-                    if session_id in _active_sessions:
-                        _active_sessions[session_id].update({
-                            "last_message_at": datetime.now(timezone.utc),
-                            "turn_count": turn_count,
-                            "checkin_sent": False,
-                            "tier2_sent": False,
-                        })
+            try:
+                if data.get("type") == "message":
+                    text = data.get("text")
+                    text = str(text).strip() if text is not None else ""
+                    if text:
+                        turn_count += 1
 
-                    # Process turn
-                    session_closed = await brain.process_turn(
-                        text,
-                        ws,
-                        session_id=session_id,
-                        turn_number=turn_count,
-                    )
+                        # Update activity timestamp and reset silence counters
+                        if session_id in _active_sessions:
+                            _active_sessions[session_id].update({
+                                "last_message_at": datetime.now(timezone.utc),
+                                "turn_count": turn_count,
+                                "checkin_sent": False,
+                                "tier2_sent": False,
+                            })
 
-                    # If session was closed, start a new one
-                    if session_closed:
-                        session_id = memory.start_session()
-                        turn_count = 0
-                        _active_sessions[session_id] = {
-                            "ws": ws,
-                            "turn_count": 0,
-                            "last_message_at": datetime.now(timezone.utc),
-                            "checkin_sent": False,
-                            "tier2_sent": False,
-                        }
+                        # Process turn
+                        session_closed = await brain.process_turn(
+                            text,
+                            ws,
+                            session_id=session_id,
+                            turn_number=turn_count,
+                        )
+
+                        # If session was closed, start a new one
+                        if session_closed:
+                            session_id = memory.start_session()
+                            turn_count = 0
+                            _active_sessions[session_id] = {
+                                "ws": ws,
+                                "turn_count": 0,
+                                "last_message_at": datetime.now(timezone.utc),
+                                "checkin_sent": False,
+                                "tier2_sent": False,
+                            }
+            except WebSocketDisconnect:
+                raise
+            except Exception as e:
+                # Error while processing a well-formed message — report it and
+                # keep the session alive rather than dropping the connection.
+                await ws.send_json({"type": "error", "text": str(e)})
     except WebSocketDisconnect:
         pass
-    except Exception as e:
-        try:
-            await ws.send_json({"type": "error", "text": str(e)})
-        except Exception:
-            pass
     finally:
         _connected_clients.discard(ws)
         _active_sessions.pop(session_id, None)

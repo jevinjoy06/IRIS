@@ -2,6 +2,7 @@
 import asyncio
 import json
 import os
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -33,6 +34,9 @@ Only call a tool when you need data you cannot produce yourself:
 - memory_recall — boss specifically asks "what did we talk about" or "do you remember X"
 - memory_write — boss explicitly says "remember this" or "save this"
 
+## CAPABILITY GAPS — BE HONEST ABOUT THESE
+You have NO way to close, kill, or quit an app or window — only list, focus, and open. If boss asks you to close/kill/quit something, tell him plainly you can't do that yet. Never say "closing X" or "done" for an action you have no tool for.
+
 ## NEVER USE TOOLS FOR
 - Greetings or small talk ("hello", "how are you", "what's up")
 - Questions about your own identity ("what's your name", "who are you", "what are you")
@@ -42,30 +46,91 @@ Only call a tool when you need data you cannot produce yourself:
 ## OUTPUT RULES
 - Never output tool call JSON, function call syntax, or parameter dicts in your response text
 - Answer directly — no preamble, no restating the question
-- Facts about Jevin from memory are injected below when relevant"""
+- Facts about Jevin from memory are injected below when relevant
+
+## GROUNDING — NON-NEGOTIABLE
+- Never state a specific file name, number, or system fact unless it came from an actual tool result in this turn. If you have not called a tool, you do not have that data — say so, don't invent it.
+- Never claim an action was performed (closing an app, deleting a file, saving something, etc.) unless a tool call actually ran and reported success. If no tool exists for what boss is asking, tell him directly instead of pretending.
+- If a tool call errors or fails, report the failure in one line and stop — do not retry more than once, and do not fall back to guessing or estimating a plausible-sounding answer."""
 
 _client = None
 
-# Words that indicate a tool is likely needed even in short messages
+# Words/phrases that indicate a tool is likely needed, regardless of message length.
 _TOOL_KEYWORDS = {
     "search", "find", "look up", "file", "folder", "open", "run", "execute",
     "command", "remember", "save", "clipboard", "notify", "notification",
     "timer", "alarm", "window", "app", "application", "install", "download",
+    "close", "kill", "quit", "exit",
     "recall", "last time", "did we", "yesterday", "last week", "system",
     "cpu", "ram", "disk", "battery", "temperature", "weather", "news",
 }
 
+# Whole-word/phrase matchers, so "research" doesn't match "search" and
+# "installation" doesn't match "install".
+_TOOL_KEYWORD_PATTERNS = [
+    re.compile(r"\b" + re.escape(kw) + r"\b") for kw in _TOOL_KEYWORDS
+]
+
+# Keywords that unambiguously imply exactly one tool. Generic tool_choice="required"
+# was observed to be silently ignored by Ollama for this model (e.g. clipboard_read),
+# so when we can name the single tool directly, we force that tool by name instead.
+_KEYWORD_TO_TOOL = {
+    "search": "web_search", "find": "web_search", "look up": "web_search",
+    "news": "web_search", "weather": "web_search",
+    "folder": "file_list",
+    "run": "shell_run", "execute": "shell_run", "command": "shell_run",
+    "remember": "memory_write", "save": "memory_write",
+    "notify": "notify", "notification": "notify",
+    "timer": "timer_set", "alarm": "timer_set",
+    "recall": "memory_recall", "last time": "memory_recall", "did we": "memory_recall",
+    "yesterday": "memory_recall", "last week": "memory_recall",
+    "system": "system_info", "cpu": "system_info", "ram": "system_info",
+    "disk": "system_info", "battery": "system_info", "temperature": "system_info",
+}
+
+# Keywords with genuinely no matching tool — never force a call for these;
+# the capability-gap prompt section handles honesty about them instead.
+_NO_TOOL_KEYWORDS = {"close", "kill", "quit", "exit", "install", "download"}
+
+
+def _tool_choice_for(text: str) -> "str | dict | None":
+    """Decide tool_choice for the first round of a turn.
+
+    Returns a specific function-forcing dict when exactly one tool is
+    unambiguously implied, "required" when some tool is needed but which
+    one isn't clear-cut, or None to leave it to the model (including when
+    no real tool exists for the request at all).
+    """
+    text_lower = text.lower()
+
+    # Clipboard is common and genuinely ambiguous (read vs write) — special-cased
+    # directly since generic "required" forcing was observed to be skipped here.
+    if re.search(r"\bclipboard\b", text_lower):
+        name = "clipboard_write" if re.search(r"\bcopy\b", text_lower) else "clipboard_read"
+        return {"type": "function", "function": {"name": name}}
+
+    if any(re.search(r"\b" + re.escape(kw) + r"\b", text_lower) for kw in _NO_TOOL_KEYWORDS):
+        return None
+
+    matched_tools = {
+        tool for kw, tool in _KEYWORD_TO_TOOL.items()
+        if re.search(r"\b" + re.escape(kw) + r"\b", text_lower)
+    }
+    if len(matched_tools) == 1:
+        return {"type": "function", "function": {"name": next(iter(matched_tools))}}
+
+    return "required" if _needs_tools(text) else None
+
 
 def _needs_tools(text: str) -> bool:
-    """Return False for purely conversational messages that don't need tools.
+    """Return True only if the message contains a whole-word tool-trigger keyword.
 
-    Short messages (< 60 chars) only get tools if they contain a tool-trigger
-    keyword. Longer messages always get tools (safe default).
+    Message length is not a signal on its own: long messages are routinely
+    pure conversation (venting, opinions, follow-ups) and must not be handed
+    the full tool list just because they're wordy.
     """
-    if len(text.strip()) >= 60:
-        return True
     text_lower = text.lower()
-    return any(kw in text_lower for kw in _TOOL_KEYWORDS)
+    return any(pattern.search(text_lower) for pattern in _TOOL_KEYWORD_PATTERNS)
 
 
 def _get_client():
@@ -94,6 +159,25 @@ async def process_turn(
 
     # Save user message
     memory.save_turn(session_id, "user", user_text)
+
+    # Deterministic tools bypass the model's tool-calling decision entirely.
+    # Ollama/qwen2.5 was proven (repeatedly, even with the specific tool forced
+    # via tool_choice) to sometimes skip calling the tool altogether and emit
+    # fabricated content instead — forcing happens at the API layer, which this
+    # exact model/runtime combo doesn't reliably honor. Calling the tool
+    # ourselves, before the model is ever involved, is the only guarantee.
+    forced = _tool_choice_for(user_text)
+    if isinstance(forced, dict):
+        forced_name = forced["function"]["name"]
+        if forced_name in _DETERMINISTIC_TOOLS:
+            await ws.send_json({"type": "tool_use", "tool": forced_name})
+            result = await async_dispatch(forced_name, {}, ws)
+            memory.save_turn(session_id, "tool", result, tool_name=forced_name)
+            deterministic_text = _DETERMINISTIC_TOOLS[forced_name](json.loads(result))
+            await ws.send_json({"type": "token", "text": deterministic_text})
+            await ws.send_json({"type": "done"})
+            memory.save_turn(session_id, "assistant", deterministic_text)
+            return False
 
     mem_context = memory.build_memory_context(user_text)
 
@@ -134,20 +218,34 @@ async def process_turn(
     messages.append({"role": "user", "content": user_text})
 
     full_response_parts: list[str] = []
+    tools_used_this_turn: set[str] = set()
 
     while True:
         current_text = ""
         tool_calls_map: dict[int, dict] = {}
         finish_reason = None
 
-        tools_for_turn = TOOL_DEFINITIONS if _needs_tools(user_text) else None
+        needs_tools = _needs_tools(user_text)
+        tools_for_turn = TOOL_DEFINITIONS if needs_tools else None
+        # Force an actual tool call on the first round when a keyword matched —
+        # otherwise the model will sometimes skip the tool entirely and answer
+        # from a memorized pattern instead of real data (observed repeatedly).
+        tool_choice = _tool_choice_for(user_text) if len(full_response_parts) == 0 else None
         try:
-            stream = await client.chat.completions.create(
+            create_kwargs = dict(
                 model=MODEL,
                 messages=messages,
                 tools=tools_for_turn,
                 stream=True,
+                temperature=0.1,
             )
+            if tool_choice:
+                create_kwargs["tool_choice"] = tool_choice
+            # Ollama defaults to a 4096-token context window, which a long
+            # transcription or tool-heavy turn can exceed — observed to cause
+            # language-consistency breakdowns when it does.
+            create_kwargs["extra_body"] = {"options": {"num_ctx": 8192}}
+            stream = await client.chat.completions.create(**create_kwargs)
 
             async for chunk in stream:
                 choice = chunk.choices[0]
@@ -196,6 +294,7 @@ async def process_turn(
                 memory.save_turn(session_id, "assistant", current_text)
 
             for tc in tool_calls_map.values():
+                tools_used_this_turn.add(tc["name"])
                 await ws.send_json({"type": "tool_use", "tool": tc["name"]})
                 try:
                     args = json.loads(tc["arguments"])
@@ -204,6 +303,14 @@ async def process_turn(
                 result = await async_dispatch(tc["name"], args, ws)
                 # Save tool call result
                 memory.save_turn(session_id, "tool", result, tool_name=tc["name"])
+
+                if tc["name"] in _DETERMINISTIC_TOOLS:
+                    deterministic_text = _DETERMINISTIC_TOOLS[tc["name"]](json.loads(result))
+                    await ws.send_json({"type": "token", "text": deterministic_text})
+                    await ws.send_json({"type": "done"})
+                    memory.save_turn(session_id, "assistant", deterministic_text)
+                    return False
+
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tc["id"],
@@ -223,8 +330,12 @@ async def process_turn(
     if messages and messages[-1]["role"] == "assistant":
         current_text_final = messages[-1].get("content", "")
 
-    # Background tasks: extract facts and check for session close
-    asyncio.create_task(_extract_facts(user_text, current_text_final, client))
+    # Background tasks: extract facts and check for session close.
+    # Skip extraction entirely when a transient/snapshot tool was used this turn —
+    # their results (CPU%, directory listings, search results, clipboard contents)
+    # are stale within minutes and the extractor unreliably stores them as if durable.
+    if not (tools_used_this_turn & _TRANSIENT_TOOLS):
+        asyncio.create_task(_extract_facts(user_text, current_text_final, client))
 
     # On first turn, label the session in background
     if turn_number == 1:
@@ -241,9 +352,14 @@ async def process_turn(
 
 
 async def _extract_facts(user_text: str, assistant_response: str, client) -> None:
-    prompt = f"""Extract facts from this conversation worth storing in a personal AI assistant's world model.
+    prompt = f"""Extract facts from this conversation worth storing LONG-TERM in a personal AI assistant's world model.
+
+Only extract durable facts about the user: stable preferences, identity, relationships, ongoing projects, or things they explicitly asked to be remembered. Do NOT extract: greetings/small talk, the assistant's own identity or capabilities, one-off tool results (file listings, system stats, search results), transient status updates, or anything that will be stale within hours.
+
+"core" tier is reserved for facts the assistant should basically always know (e.g. the user's name, role, long-running projects) — use it sparingly, at most one fact here. Most things belong in "relevant" or should not be stored at all.
+
 Return a JSON array. Each element: {{"content": "...", "tier": "core|relevant|archive", "importance": 0.0-1.0, "tags": [...]}}
-Return [] if nothing is worth storing. Return ONLY the JSON array, no other text.
+Return [] if nothing durable is worth storing — this is the common case, most turns produce nothing. Return ONLY the JSON array, no other text.
 
 User: {user_text}
 Assistant: {assistant_response}"""
@@ -261,13 +377,24 @@ Assistant: {assistant_response}"""
                 raw = raw[4:]
         facts = json.loads(raw)
         for fact in facts:
-            if isinstance(fact, dict) and "content" in fact:
-                memory.write_fact(
-                    content=fact["content"],
-                    tier=fact.get("tier", "relevant"),
-                    importance=float(fact.get("importance", 0.5)),
-                    tags=fact.get("tags"),
-                )
+            if not isinstance(fact, dict) or "content" not in fact:
+                continue
+            content = str(fact["content"]).strip()
+            # Quality gate: skip trivial/fragment-length content regardless of
+            # what tier/importance the extractor assigned it.
+            if len(content) < 20 or len(content.split()) < 3:
+                continue
+            tier = fact.get("tier", "relevant")
+            importance = float(fact.get("importance", 0.5))
+            # Core tier is reserved for genuinely high-confidence durable facts.
+            if tier == "core" and importance < 0.85:
+                tier = "relevant"
+            memory.write_fact(
+                content=content,
+                tier=tier,
+                importance=importance,
+                tags=fact.get("tags"),
+            )
     except Exception:
         pass
 
@@ -293,6 +420,32 @@ Return ONLY the label text, nothing else."""
             memory.label_session(session_id, label)
     except Exception:
         pass
+
+
+# Tools whose results get formatted directly by code instead of being handed
+# back to the model for prose synthesis. clipboard_read was proven (repeatedly,
+# across generic/specific tool_choice forcing, temperature changes, and a fresh
+# model reload) to confidently fabricate completely unrelated content instead of
+# relaying its own real tool result — this bypasses that failure mode entirely
+# for this one tool rather than trusting the model to report it faithfully.
+def _format_clipboard_read(result: dict) -> str:
+    if not result.get("ok"):
+        return f"Couldn't read the clipboard: {result.get('error', 'unknown error')}"
+    text = result.get("text", "")
+    if not text:
+        return "Your clipboard is empty, boss."
+    return f'Your clipboard has: "{text}"'
+
+
+_DETERMINISTIC_TOOLS = {
+    "clipboard_read": _format_clipboard_read,
+}
+
+
+_TRANSIENT_TOOLS = {
+    "system_info", "shell_run", "file_list", "file_read", "window_list",
+    "clipboard_read", "web_search",
+}
 
 
 _CLOSE_PHRASES = {
