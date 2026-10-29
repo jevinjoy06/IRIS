@@ -1,22 +1,27 @@
 import { useState, useEffect, useRef } from 'react'
 
-export default function TransientResponse({ text, streaming }) {
+// `streaming` drives the blinking cursor (text actually arriving right now).
+// `active` is broader — also true while audio is synthesizing/playing — and
+// is what suppresses the fade-out timer, so the response doesn't disappear
+// mid-sentence just because the text itself finished arriving long before
+// the spoken audio does.
+export default function TransientResponse({ text, streaming, active }) {
   const [visible, setVisible] = useState(false)
   const timerRef = useRef(null)
 
   useEffect(() => {
-    if (text || streaming) {
+    if (text || active) {
       clearTimeout(timerRef.current)
       setVisible(true)
     }
-  }, [text, streaming])
+  }, [text, active])
 
   useEffect(() => {
-    if (!streaming && text) {
+    if (!active && text) {
       timerRef.current = setTimeout(() => setVisible(false), 8000)
     }
     return () => clearTimeout(timerRef.current)
-  }, [streaming, text])
+  }, [active, text])
 
   return (
     <div

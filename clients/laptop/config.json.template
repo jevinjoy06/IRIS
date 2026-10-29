@@ -1,5 +1,4 @@
 {
-  "_comment": "Copy to config.json — gitignored. Set hub_url to your desktop's Tailscale IP (stable) or LAN IP.",
-  "_tailscale": "Install Tailscale on both machines, log into the same account. Desktop Tailscale IP: 100.98.135.70 (hostname: iris-desktop)",
-  "hub_url": "ws://100.98.135.70:7865/ws"
+  "_comment": "Copy to config.json — gitignored. Defaults to localhost for running on the same machine as the hub. For a remote device, set hub_url to the hub machine's Tailscale IP (e.g. ws://100.98.135.70:7865/ws) or LAN IP.",
+  "hub_url": "ws://localhost:7865/ws"
 }

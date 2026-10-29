@@ -393,7 +393,7 @@ def main() -> None:
 
     print(
         "\nAll done!\n"
-        "Test with:  python clients/desktop/main.py\n"
+        "Test with:  python clients/laptop/main.py\n"
         "Say 'iris' to wake the assistant."
     )
 

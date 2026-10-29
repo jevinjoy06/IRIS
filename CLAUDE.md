@@ -4,8 +4,8 @@ Voice assistant + FPGA wake-word accelerator. Hub-and-spoke: GPU desktop runs th
 
 ## Structure
 - `hub/` — FastAPI + WebSocket server; Ollama brain (OpenAI-compat API); SQLite memory
-- `clients/desktop/` — local client for the GPU PC (hub at localhost)
-- `clients/laptop/` — remote client that connects to the hub over LAN or tunnel
+- `clients/laptop/` — the IRIS client (orb + voice + text), runs on any device; `hub_url` in config.json points at localhost (same machine as the hub) or the hub's Tailscale/LAN IP (remote)
+- `clients/hub-dashboard/` — admin/monitoring app for the hub machine specifically (telemetry, memory browser, chat)
 - `voice/` — shared Python voice pipeline (wake word → VAD → transcription)
 - `hardware/` — Verilog FPGA accelerator (Basys 3, Artix-7 XC7A35T)
 - `docs/` — design docs and plans
@@ -17,10 +17,10 @@ Voice assistant + FPGA wake-word accelerator. Hub-and-spoke: GPU desktop runs th
 - UI: `http://localhost:7865` (WebSocket at `/ws`)
 
 ## Clients
-- Entry: `python clients/desktop/main.py` or `python clients/laptop/main.py`
+- Entry: `python clients/laptop/main.py` (text/voice CLI, `--voice` for the full pipeline) or `npm run dev` in `clients/laptop/` for the Electron GUI
 - Config: copy `config.json.template` → `config.json` in the client dir and set `hub_url`
-- Desktop default: `ws://localhost:7865/ws`
-- Laptop: set `hub_url` to desktop LAN IP or tunnel URL
+- Same machine as the hub: `ws://localhost:7865/ws`
+- Remote device: set `hub_url` to the hub's Tailscale IP or LAN IP
 
 ## Voice layer (shared pipeline)
 - Wake word (openWakeWord) → VAD recording → transcription (Moonshine) → hub WebSocket → Ollama → Kokoro ONNX TTS

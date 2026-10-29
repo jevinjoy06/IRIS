@@ -16,8 +16,8 @@ Desktop PC (hub)
 └── Web UI at http://localhost:7865
 
 Clients (connect over Tailscale)
-├── clients/desktop/  ← local UI on the same machine
-└── clients/laptop/   ← connects via ws://100.74.253.30:7865/ws
+└── clients/laptop/  ← the IRIS client (orb + voice + text); hub_url set to localhost
+    (same machine) or the hub's Tailscale IP (remote device)
 ```
 
 ---
@@ -61,8 +61,8 @@ python clients/laptop/main.py
 | Path | What it is |
 |---|---|
 | `hub/` | FastAPI + WebSocket server, Ollama brain, SQLite memory |
-| `clients/desktop/` | Local client for the GPU PC |
-| `clients/laptop/` | Remote client — connects over Tailscale |
+| `clients/laptop/` | The IRIS client — runs on any device, local or remote over Tailscale |
+| `clients/hub-dashboard/` | Admin/monitoring app for the hub machine specifically |
 | `voice/` | Shared voice pipeline: wake word → VAD → transcription (Moonshine) |
 | `hardware/` | Verilog FPGA accelerator (Basys 3, Artix-7 XC7A35T) |
 | `docs/` | Design docs |
