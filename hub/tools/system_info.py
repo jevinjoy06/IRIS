@@ -1,11 +1,34 @@
 """System monitoring tool."""
 import platform
+import subprocess
 
 try:
     import psutil
     PSUTIL_AVAILABLE = True
 except ImportError:
     PSUTIL_AVAILABLE = False
+
+
+def _get_gpu_info() -> dict | None:
+    """Query GPU stats via nvidia-smi. Returns None if unavailable (no NVIDIA GPU/driver)."""
+    try:
+        out = subprocess.run(
+            ["nvidia-smi", "--query-gpu=name,utilization.gpu,memory.used,memory.total,temperature.gpu",
+             "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if out.returncode != 0 or not out.stdout.strip():
+            return None
+        name, util, mem_used, mem_total, temp = (p.strip() for p in out.stdout.strip().split(","))
+        return {
+            "name": name,
+            "utilization_percent": float(util),
+            "vram_used_mb": float(mem_used),
+            "vram_total_mb": float(mem_total),
+            "temperature_c": float(temp),
+        }
+    except (FileNotFoundError, subprocess.TimeoutExpired, ValueError):
+        return None
 
 
 def get_system_info() -> dict:
@@ -54,6 +77,7 @@ def get_system_info() -> dict:
             "ram_total_gb": round(ram_total_gb, 2),
             "disk_percent": disk_percent,
             "battery_percent": battery_percent,
+            "gpu": _get_gpu_info(),
         }
     except Exception as e:
         return {

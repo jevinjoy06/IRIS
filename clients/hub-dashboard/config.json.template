@@ -1,0 +1,6 @@
+{
+  "_comment": "Copy to config.json — gitignored. hub_ws should match the hub's /ws URL; hub_http is the same host without the path.",
+  "hub_ws": "ws://localhost:7865/ws",
+  "hub_http": "http://localhost:7865",
+  "poll_interval_ms": 2000
+}

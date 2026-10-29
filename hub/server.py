@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from hub import brain, memory
+from hub.tools.system_info import get_system_info
 
 _STATIC = Path(__file__).parent / "static"
 
@@ -114,6 +115,15 @@ async def status() -> JSONResponse:
         "model": os.environ.get("OLLAMA_MODEL", "llama3.1:8b"),
         "ollama_url": os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434/v1"),
     })
+
+
+# Defined as a plain (non-async) endpoint deliberately: get_system_info() blocks
+# for ~1s (psutil.cpu_percent sampling) plus an nvidia-smi subprocess call.
+# FastAPI runs sync def endpoints in a thread pool, so this can't stall the
+# event loop and starve active WebSocket chat sessions while a dashboard polls it.
+@app.get("/api/system")
+def system_telemetry() -> JSONResponse:
+    return JSONResponse(get_system_info())
 
 
 @app.websocket("/ws")

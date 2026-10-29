@@ -1,5 +1,6 @@
 """IRIS brain — agentic loop using Ollama (OpenAI-compatible API)."""
 import asyncio
+import base64
 import json
 import os
 import re
@@ -13,7 +14,7 @@ load_dotenv(Path(__file__).parent / ".env", override=True)
 if TYPE_CHECKING:
     from fastapi import WebSocket
 
-from hub import memory
+from hub import memory, tts
 from hub.tools.registry import TOOL_DEFINITIONS, async_dispatch
 
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434/v1")
@@ -50,27 +51,30 @@ You have NO way to close, kill, or quit an app or window — only list, focus, a
 - Facts about Jevin from memory are injected below when relevant
 
 ## GROUNDING — NON-NEGOTIABLE
-- Never state a specific file name, number, or system fact unless it came from an actual tool result in this turn. If you have not called a tool, you do not have that data — say so, don't invent it.
+- Never state a specific file name, number, system fact, business/place name, price, address, review, or any other real-world specific unless it came from an actual tool result in this turn. If you have not called a tool, you do not have that data — say so, or call web_search, don't invent it.
 - Never claim an action was performed (closing an app, deleting a file, saving something, etc.) unless a tool call actually ran and reported success. If no tool exists for what boss is asking, tell him directly instead of pretending.
 - If a tool call errors or fails, report the failure in one line and stop — do not retry more than once, and do not fall back to guessing or estimating a plausible-sounding answer."""
 
 _client = None
 
-# Words/phrases that indicate a tool is likely needed, regardless of message length.
-_TOOL_KEYWORDS = {
-    "search", "find", "look up", "file", "folder", "open", "run", "execute",
-    "command", "remember", "save", "clipboard", "notify", "notification",
-    "timer", "alarm", "window", "app", "application", "install", "download",
-    "close", "kill", "quit", "exit",
-    "recall", "last time", "did we", "yesterday", "last week", "system",
-    "cpu", "gpu", "ram", "disk", "battery", "temperature", "weather", "news",
-    "status", "usage", "utilization", "performance", "memory", "storage",
-}
-
-# Whole-word/phrase matchers, so "research" doesn't match "search" and
-# "installation" doesn't match "install".
-_TOOL_KEYWORD_PATTERNS = [
-    re.compile(r"\b" + re.escape(kw) + r"\b") for kw in _TOOL_KEYWORDS
+# Patterns that mean "this message needs no tool at all" — greetings, thanks,
+# short acknowledgments, and questions about IRIS's own identity. This is a
+# denylist, not an allow-list, deliberately: the set of topics that might need
+# a tool (restaurants, prices, current events, directions, ...) is unbounded
+# and can never be fully enumerated by keyword, but pure conversational
+# chitchat is a small, closed category that can be. Tools default to being
+# offered for everything else; tool_choice stays "auto" so visibility alone
+# doesn't force a call — the model still judges, guided by the WHEN/NEVER TO
+# USE TOOLS sections below, backed by the GROUNDING rule against fabricating
+# specifics either way.
+_NO_TOOL_PATTERNS = [
+    re.compile(p, re.IGNORECASE) for p in [
+        r"^\s*(hi|hey|hello|yo|sup)\b.{0,20}$",
+        r"\b(thanks|thank you|thx|appreciate it)\b",
+        r"\bhow(?:'s| is| are) it going\b|\bwhat'?s up\b|\bhow are you\b",
+        r"\bwho are you\b|\bwhat'?s your name\b|\bwhat are you\b",
+        r"^\s*(ok|okay|cool|nice|great|got it|alright|sounds good|sure)\.?\s*$",
+    ]
 ]
 
 # Keywords that unambiguously imply exactly one tool. Generic tool_choice="required"
@@ -121,18 +125,24 @@ def _tool_choice_for(text: str) -> "str | dict | None":
     if len(matched_tools) == 1:
         return {"type": "function", "function": {"name": next(iter(matched_tools))}}
 
-    return "required" if _needs_tools(text) else None
+    # No unambiguous single tool — leave it to the model's own judgment (None
+    # means the API's default "auto" applies) rather than forcing some call.
+    # Forcing "required" here with no clear target risks forcing the wrong
+    # tool on an open-ended message like a restaurant recommendation request.
+    return None
 
 
 def _needs_tools(text: str) -> bool:
-    """Return True only if the message contains a whole-word tool-trigger keyword.
+    """Return False only for the small, closed set of pure-chitchat patterns.
 
-    Message length is not a signal on its own: long messages are routinely
-    pure conversation (venting, opinions, follow-ups) and must not be handed
-    the full tool list just because they're wordy.
+    Everything else gets the tool list offered (tool_choice stays "auto", so
+    this alone doesn't force a call). See _NO_TOOL_PATTERNS for why this is a
+    denylist rather than an allow-list of trigger topics.
     """
-    text_lower = text.lower()
-    return any(pattern.search(text_lower) for pattern in _TOOL_KEYWORD_PATTERNS)
+    text_lower = text.strip().lower()
+    if not text_lower:
+        return False
+    return not any(pattern.search(text_lower) for pattern in _NO_TOOL_PATTERNS)
 
 
 def _get_client():
@@ -162,12 +172,21 @@ async def process_turn(
     # Save user message
     memory.save_turn(session_id, "user", user_text)
 
-    # Deterministic tools bypass the model's tool-calling decision entirely.
-    # Ollama/qwen2.5 was proven (repeatedly, even with the specific tool forced
-    # via tool_choice) to sometimes skip calling the tool altogether and emit
-    # fabricated content instead — forcing happens at the API layer, which this
-    # exact model/runtime combo doesn't reliably honor. Calling the tool
-    # ourselves, before the model is ever involved, is the only guarantee.
+    # Deterministic tools guarantee the model's tool-calling DECISION is
+    # skipped for tools proven unreliable even under forced tool_choice —
+    # Ollama/qwen2.5 was observed to sometimes skip the call entirely, or call
+    # it and still report fabricated content instead of the real result.
+    # Calling the tool ourselves, before the model is involved, guarantees a
+    # real result exists. We do NOT short-circuit the rest of the turn here
+    # (an earlier version did, via an immediate return) — a message can
+    # legitimately bundle a deterministic-tool request with something else
+    # ("what's on my clipboard, and what time did we last talk?"), and
+    # returning early silently dropped the second half. Instead the real
+    # result is seeded into the message history below as if the model had
+    # called it itself, and the normal loop continues so anything else in a
+    # compound request still gets handled, now grounded in real data.
+    pre_seeded_messages: list[dict] = []
+    tools_used_this_turn: set[str] = set()
     forced = _tool_choice_for(user_text)
     if isinstance(forced, dict):
         forced_name = forced["function"]["name"]
@@ -175,11 +194,27 @@ async def process_turn(
             await ws.send_json({"type": "tool_use", "tool": forced_name})
             result = await async_dispatch(forced_name, {}, ws)
             memory.save_turn(session_id, "tool", result, tool_name=forced_name)
+            tools_used_this_turn.add(forced_name)
+            call_id = f"deterministic_{forced_name}"
+            # The real tool result is included (role: "tool") for protocol
+            # correctness, but we also pre-answer it as spoken assistant text
+            # (role: "assistant") right after — this is the part that actually
+            # prevents re-narration. Clipboard specifically was proven to
+            # fabricate a *different* answer even when the real result was
+            # already present as a plain tool message, so leaving the model a
+            # fresh turn to "explain" that data in its own words reopens the
+            # exact failure mode this bypass exists to close.
             deterministic_text = _DETERMINISTIC_TOOLS[forced_name](json.loads(result))
+            pre_seeded_messages = [
+                {"role": "assistant", "tool_calls": [{
+                    "id": call_id, "type": "function",
+                    "function": {"name": forced_name, "arguments": "{}"},
+                }]},
+                {"role": "tool", "tool_call_id": call_id, "content": result},
+                {"role": "assistant", "content": deterministic_text},
+            ]
             await ws.send_json({"type": "token", "text": deterministic_text})
-            await ws.send_json({"type": "done"})
             memory.save_turn(session_id, "assistant", deterministic_text)
-            return False
 
     mem_context = memory.build_memory_context(user_text)
 
@@ -216,11 +251,12 @@ async def process_turn(
         elif t["role"] == "assistant":
             messages.append({"role": "assistant", "content": t["content"]})
 
-    # Append current user message
+    # Append current user message, then the pre-seeded deterministic-tool
+    # call/result (if any), so the model sees it as already having happened.
     messages.append({"role": "user", "content": user_text})
+    messages.extend(pre_seeded_messages)
 
     full_response_parts: list[str] = []
-    tools_used_this_turn: set[str] = set()
 
     while True:
         current_text = ""
@@ -232,7 +268,12 @@ async def process_turn(
         # Force an actual tool call on the first round when a keyword matched —
         # otherwise the model will sometimes skip the tool entirely and answer
         # from a memorized pattern instead of real data (observed repeatedly).
-        tool_choice = _tool_choice_for(user_text) if len(full_response_parts) == 0 else None
+        # Skip forcing when we already pre-seeded that exact tool's result above —
+        # forcing it again would just call it a second time for no reason.
+        tool_choice = (
+            None if (pre_seeded_messages and len(full_response_parts) == 0)
+            else (_tool_choice_for(user_text) if len(full_response_parts) == 0 else None)
+        )
         try:
             create_kwargs = dict(
                 model=MODEL,
@@ -306,18 +347,24 @@ async def process_turn(
                 # Save tool call result
                 memory.save_turn(session_id, "tool", result, tool_name=tc["name"])
 
-                if tc["name"] in _DETERMINISTIC_TOOLS:
-                    deterministic_text = _DETERMINISTIC_TOOLS[tc["name"]](json.loads(result))
-                    await ws.send_json({"type": "token", "text": deterministic_text})
-                    await ws.send_json({"type": "done"})
-                    memory.save_turn(session_id, "assistant", deterministic_text)
-                    return False
-
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tc["id"],
                     "content": result,
                 })
+
+                if tc["name"] in _DETERMINISTIC_TOOLS:
+                    # Same reasoning as the pre-model bypass above: pre-answer
+                    # with the real result as spoken assistant text so the
+                    # model doesn't get a free turn to re-narrate (and
+                    # potentially diverge from) data it's proven unreliable at
+                    # reporting faithfully — but don't short-circuit the rest
+                    # of this tool-call batch or the turn; other tool calls in
+                    # the same batch still need their results appended below.
+                    deterministic_text = _DETERMINISTIC_TOOLS[tc["name"]](json.loads(result))
+                    messages.append({"role": "assistant", "content": deterministic_text})
+                    await ws.send_json({"type": "token", "text": deterministic_text})
+                    memory.save_turn(session_id, "assistant", deterministic_text)
         else:
             messages.append({"role": "assistant", "content": current_text})
             # Save final assistant message
@@ -331,6 +378,13 @@ async def process_turn(
     current_text_final = ""
     if messages and messages[-1]["role"] == "assistant":
         current_text_final = messages[-1].get("content", "")
+
+    # Synthesize and stream speech audio for the response. Runs after "done"
+    # so the text/UI side isn't held up waiting on synthesis; clients that
+    # don't handle the "audio" message type (the laptop CLI client, etc.)
+    # just ignore it, same as any other unrecognized message type.
+    if current_text_final.strip() and tts.available():
+        asyncio.create_task(_speak_response(current_text_final, ws))
 
     # Background tasks: extract facts and check for session close.
     # Skip extraction entirely when a transient/snapshot tool was used this turn —
@@ -351,6 +405,28 @@ async def process_turn(
         return True
 
     return False
+
+
+async def _speak_response(text: str, ws: "WebSocket") -> None:
+    """Synthesize text to speech and stream it to the client as a WS message.
+
+    Kokoro synthesis is blocking CPU/GPU work, so it runs in the default
+    executor rather than the event loop — otherwise it would stall every
+    other active session on the hub for the duration of synthesis.
+    """
+    try:
+        loop = asyncio.get_running_loop()
+        wav_bytes = await loop.run_in_executor(None, tts.synthesize_wav, text)
+        await ws.send_json({
+            "type": "audio",
+            "format": "wav",
+            "data": base64.b64encode(wav_bytes).decode("ascii"),
+        })
+    except Exception as e:
+        # Non-fatal and silent to the client: the text response already
+        # succeeded, and a generic "error" message risks being misread by
+        # the client as the whole turn having failed. Log server-side only.
+        print(f"[tts] synthesis failed: {e}", flush=True)
 
 
 async def _extract_facts(user_text: str, assistant_response: str, client) -> None:

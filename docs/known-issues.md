@@ -57,6 +57,36 @@ Tracked during the Oct 2026 conversational testing pass. Not yet fixed — come 
 
 ## Resolved since this file was written
 
+- **Unbounded tool-trigger keyword list** — `_needs_tools()` used to be an
+  allow-list of topic keywords, which meant any topic not anticipated (e.g.
+  restaurant recommendations) never got the tool list offered at all, and
+  IRIS fabricated specific business names with fake review claims instead
+  (confirmed live over the laptop-to-hub Tailscale connection). Fixed by
+  inverting to a denylist: tools are now offered by default, suppressed only
+  for a small closed set of pure-chitchat patterns (greetings, thanks,
+  identity questions). `tool_choice` stays "auto" so visibility alone
+  doesn't force a call. Re-verified the original regression this guarded
+  against (spurious tool calls on greetings/venting) does not reappear.
+  Known pre-existing quirk, not touched by this fix: `_KEYWORD_TO_TOOL`'s
+  specific-tool forcing has no negation detection, so "don't search the web
+  for X" still sends a forced `web_search` tool_choice — it only "works" by
+  accident because Ollama doesn't reliably honor forced tool_choice.
+- **`_DETERMINISTIC_TOOLS` silently dropped the rest of a compound message** —
+  e.g. "what's on my clipboard, and what time did we last talk?" only ever
+  answered the clipboard half; the bypass hard-returned immediately after
+  dispatching the deterministic tool, both pre-model and inside the normal
+  tool loop. Same root cause as the keyword-list issue above: a hardcoded
+  per-tool special case that doesn't scale once requests combine intents.
+  Fixed by guaranteeing dispatch (still necessary — clipboard is proven to
+  fabricate even with the real result sitting in context as a plain tool
+  message) but seeding the real result as an already-spoken assistant
+  message instead of returning, so the loop continues and anything else in
+  the message still gets a chance to be addressed. Verified: 5/5 single-intent
+  clipboard trials still correct (no regression), 3/3 compound trials now
+  address both parts — clipboard always correct, the second part never
+  fabricated even on the 2/3 trials where it didn't call `memory_recall`.
+
+
 - Tailscale is now installed and running on the desktop (node `iris-desktop`,
   `100.98.135.70`). The laptop (`jevin-legion-5`, `100.74.253.30`) was already on the
   same tailnet — the earlier note in this file blaming the laptop's IP as "this
