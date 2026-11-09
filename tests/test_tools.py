@@ -49,6 +49,14 @@ class TestShell:
         from hub.tools import shell
         assert shell.is_destructive_pattern("echo hello") is False
 
+    def test_execute_caps_timeout_at_30(self):
+        """execute() caps an oversized timeout at 30s before calling subprocess.run."""
+        from hub.tools import shell
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = Mock(stdout="", stderr="", returncode=0)
+            shell.execute("echo test", timeout=100)
+            assert mock_run.call_args[1]["timeout"] == 30
+
     def test_run_command_refuses_destructive(self):
         """Backward-compatible wrapper still hard-refuses destructive commands."""
         from hub.tools import shell
