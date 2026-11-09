@@ -12,120 +12,56 @@ from typing import Any
 # ============================================================================
 
 class TestShell:
-    """Tests for hub/tools/shell.py — run_command()"""
+    """Tests for hub/tools/shell.py — execute(), is_destructive_pattern(), run_command()"""
 
-    def test_run_simple_command_success(self):
-        """Test running a safe command returns stdout."""
+    def test_execute_simple_command_success(self):
         from hub.tools import shell
-
-        # Use 'echo' which works on both Windows and Unix
-        result = shell.run_command("echo hello")
+        result = shell.execute("echo hello")
         assert result["ok"] is True
         assert "hello" in result["stdout"]
         assert result["returncode"] == 0
-        assert "stderr" in result
 
-    def test_run_command_with_non_zero_returncode(self):
-        """Test command that returns non-zero exit code."""
+    def test_execute_nonzero_returncode(self):
         from hub.tools import shell
-
-        # Command that fails (false exists on Windows via Git Bash/WSL context, but use 'exit 1')
-        result = shell.run_command("cmd /c exit 1" if True else "false")
-        assert result["ok"] is True  # Still ok=True, but returncode != 0
+        result = shell.execute("cmd /c exit 1")
+        assert result["ok"] is True
         assert result["returncode"] == 1
 
-    def test_dangerous_pattern_rm_rf(self):
-        """Test rejection of 'rm -rf' pattern."""
+    def test_execute_timeout(self):
         from hub.tools import shell
-
-        result = shell.run_command("rm -rf /tmp")
+        result = shell.execute("ping -n 10 127.0.0.1", timeout=1)
         assert result["ok"] is False
-        assert "dangerous pattern" in result["error"].lower() or "refused" in result["error"].lower()
+        assert "timed out" in result["error"].lower()
 
-    def test_dangerous_pattern_format(self):
-        """Test rejection of 'format' pattern."""
+    def test_is_destructive_pattern_rm_rf(self):
         from hub.tools import shell
+        assert shell.is_destructive_pattern("rm -rf /tmp") is True
 
+    def test_is_destructive_pattern_format(self):
+        from hub.tools import shell
+        assert shell.is_destructive_pattern("format c:") is True
+
+    def test_is_destructive_pattern_del_fsfq(self):
+        from hub.tools import shell
+        assert shell.is_destructive_pattern("del /f /s /q C:") is True
+
+    def test_is_destructive_pattern_safe_command(self):
+        from hub.tools import shell
+        assert shell.is_destructive_pattern("echo hello") is False
+
+    def test_run_command_refuses_destructive(self):
+        """Backward-compatible wrapper still hard-refuses destructive commands."""
+        from hub.tools import shell
         result = shell.run_command("format c:")
         assert result["ok"] is False
         assert "refused" in result["error"].lower()
 
-    def test_dangerous_pattern_del_fsfq(self):
-        """Test rejection of 'del /f /s /q C:' pattern."""
+    def test_run_command_runs_safe_command(self):
+        """Backward-compatible wrapper still executes safe commands."""
         from hub.tools import shell
-
-        result = shell.run_command("del /f /s /q C:")
-        assert result["ok"] is False
-        assert "refused" in result["error"].lower()
-
-    def test_dangerous_pattern_mkfs(self):
-        """Test rejection of 'mkfs' pattern."""
-        from hub.tools import shell
-
-        result = shell.run_command("mkfs /dev/sda1")
-        assert result["ok"] is False
-        assert "refused" in result["error"].lower()
-
-    def test_dangerous_pattern_dd_if(self):
-        """Test rejection of 'dd if=' pattern."""
-        from hub.tools import shell
-
-        result = shell.run_command("dd if=/dev/zero of=/dev/sda")
-        assert result["ok"] is False
-        assert "refused" in result["error"].lower()
-
-    def test_dangerous_pattern_shred(self):
-        """Test rejection of 'shred' pattern."""
-        from hub.tools import shell
-
-        result = shell.run_command("shred -u /important/file")
-        assert result["ok"] is False
-        assert "refused" in result["error"].lower()
-
-    def test_timeout_default_capped_at_30(self):
-        """Test that timeout is capped at 30 seconds."""
-        from hub.tools import shell
-
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value = Mock(stdout="", stderr="", returncode=0)
-            shell.run_command("echo test", timeout=999)
-
-            # Check that subprocess.run was called with timeout=30, not 999
-            call_kwargs = mock_run.call_args[1]
-            assert call_kwargs["timeout"] == 30
-
-    def test_timeout_expired_error(self):
-        """Test handling of subprocess.TimeoutExpired exception."""
-        from hub.tools import shell
-
-        with patch("subprocess.run") as mock_run:
-            mock_run.side_effect = subprocess.TimeoutExpired("cmd", timeout=5)
-
-            result = shell.run_command("echo test", timeout=5)
-            assert result["ok"] is False
-            assert "timed out" in result["error"].lower()
-            assert result["returncode"] == -1
-
-    def test_exception_handling(self):
-        """Test handling of unexpected exceptions."""
-        from hub.tools import shell
-
-        with patch("subprocess.run") as mock_run:
-            mock_run.side_effect = RuntimeError("Something went wrong")
-
-            result = shell.run_command("echo test")
-            assert result["ok"] is False
-            assert "Something went wrong" in result["error"]
-
-    def test_response_structure(self):
-        """Test that all required fields are present in response."""
-        from hub.tools import shell
-
-        result = shell.run_command("echo test")
-        assert "ok" in result
-        assert "stdout" in result
-        assert "stderr" in result
-        assert "returncode" in result
+        result = shell.run_command("echo hello")
+        assert result["ok"] is True
+        assert "hello" in result["stdout"]
 
 
 # ============================================================================

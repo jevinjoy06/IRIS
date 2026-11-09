@@ -3,40 +3,36 @@ import subprocess
 import re
 
 
-def run_command(command: str, timeout: int = 30) -> dict:
+DANGEROUS_PATTERNS = [
+    r'rm\s+-rf',
+    r'format\s+',
+    r'del\s+/f\s+/s\s+/q\s+[cC]:',
+    r'mkfs',
+    r'dd\s+if=',
+    r'shred\s+',
+]
+
+
+def is_destructive_pattern(command: str) -> bool:
+    """Return True if the command matches a known destructive pattern."""
+    command_lower = command.lower()
+    return any(re.search(pattern, command_lower) for pattern in DANGEROUS_PATTERNS)
+
+
+def execute(command: str, timeout: int = 30) -> dict:
     """
-    Execute a shell command with safety limits.
+    Execute a shell command with a timeout limit. Does not perform safety checks;
+    callers that need to gate destructive commands should call is_destructive_pattern().
 
     Args:
         command: The command to run
         timeout: Max execution time in seconds (capped at 30)
 
     Returns:
-        Dict with stdout, stderr, and returncode
+        Dict with ok, stdout, stderr, and returncode
     """
     # Enforce max timeout of 30 seconds
     timeout = min(timeout, 30)
-
-    # Safety checks: refuse obviously destructive patterns
-    dangerous_patterns = [
-        r'rm\s+-rf',
-        r'format\s+',
-        r'del\s+/f\s+/s\s+/q\s+[cC]:',
-        r'mkfs',
-        r'dd\s+if=',
-        r'shred\s+',
-    ]
-
-    command_lower = command.lower()
-    for pattern in dangerous_patterns:
-        if re.search(pattern, command_lower):
-            return {
-                "ok": False,
-                "error": f"Refused: command matches dangerous pattern",
-                "stdout": "",
-                "stderr": "",
-                "returncode": -1,
-            }
 
     try:
         result = subprocess.run(
@@ -68,3 +64,20 @@ def run_command(command: str, timeout: int = 30) -> dict:
             "stderr": "",
             "returncode": -1,
         }
+
+
+def run_command(command: str, timeout: int = 30) -> dict:
+    """
+    Backward-compatible wrapper: refuses destructive commands, then executes.
+    Kept so the existing shell_run dispatch path behaves as before. Slated for
+    removal when the shell_run tool is retired.
+    """
+    if is_destructive_pattern(command):
+        return {
+            "ok": False,
+            "error": "Refused: command matches dangerous pattern",
+            "stdout": "",
+            "stderr": "",
+            "returncode": -1,
+        }
+    return execute(command, timeout)
