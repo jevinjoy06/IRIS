@@ -80,12 +80,13 @@ async def test_heuristic_upgrades_undeclared_destructive_command(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_remote_agent_dispatch_round_trip():
-    devices.register_hub_self()
     agent_ws = AsyncMock()
 
     async def reply_with_result(*args, **kwargs):
         request_id = agent_ws.send_json.call_args[0][0]["request_id"]
-        remote_exec.resolve_exec_result(request_id, {"ok": True, "stdout": "remote output", "stderr": "", "returncode": 0})
+        remote_exec.resolve_exec_result(
+            request_id, agent_ws, {"ok": True, "stdout": "remote output", "stderr": "", "returncode": 0}
+        )
 
     agent_ws.send_json.side_effect = reply_with_result
     devices.register_agent("laptop-host", "laptop", agent_ws)
@@ -100,3 +101,62 @@ async def test_agent_device_with_no_agent_ws_errors():
     devices.register_chat("laptop-host", "laptop", AsyncMock())
     result = await remote_exec.execute_remote("echo hi", False, "laptop-host", None, AsyncMock())
     assert result["ok"] is False
+
+@pytest.mark.asyncio
+async def test_agent_timeout_returns_error():
+    # timeout=-10 makes the wait_for(timeout + 10) bound effectively 0, so this
+    # exercises the real timeout branch without a real wait.
+    agent_ws = AsyncMock()
+    devices.register_agent("laptop-host", "laptop", agent_ws)
+    result = await remote_exec.execute_remote("echo hi", False, "laptop-host", None, AsyncMock(), timeout=-10)
+    assert result["ok"] is False
+    assert "did not respond in time" in result["error"]
+
+@pytest.mark.asyncio
+async def test_resolve_exec_result_rejects_wrong_responding_ws():
+    agent_ws = AsyncMock()
+    impostor_ws = AsyncMock()
+
+    async def reply_from_wrong_then_right_ws(*args, **kwargs):
+        request_id = agent_ws.send_json.call_args[0][0]["request_id"]
+        # A reply from a different connection naming the same request_id must
+        # not resolve the future...
+        assert remote_exec.resolve_exec_result(
+            request_id, impostor_ws, {"ok": True, "stdout": "forged", "stderr": "", "returncode": 0}
+        ) is False
+        # ...but the real agent connection still can.
+        assert remote_exec.resolve_exec_result(
+            request_id, agent_ws, {"ok": True, "stdout": "remote output", "stderr": "", "returncode": 0}
+        ) is True
+
+    agent_ws.send_json.side_effect = reply_from_wrong_then_right_ws
+    devices.register_agent("laptop-host", "laptop", agent_ws)
+
+    result = await remote_exec.execute_remote("echo hi", False, "laptop-host", None, AsyncMock())
+    assert result["ok"] is True
+    assert result["stdout"] == "remote output"
+
+@pytest.mark.asyncio
+async def test_confirmation_send_json_raising_returns_clean_error_and_cleans_up():
+    hub_id = devices.register_hub_self()
+    origin_ws = AsyncMock()
+    origin_ws.send_json.side_effect = RuntimeError("socket closed")
+
+    result = await remote_exec.execute_remote("echo hi", True, None, hub_id, origin_ws)
+
+    assert result["ok"] is False
+    assert "error" in result
+    from hub import pending_confirmations
+    assert pending_confirmations._pending == {}
+
+@pytest.mark.asyncio
+async def test_agent_dispatch_send_json_raising_returns_clean_error_and_cleans_up():
+    agent_ws = AsyncMock()
+    agent_ws.send_json.side_effect = RuntimeError("socket closed")
+    devices.register_agent("laptop-host", "laptop", agent_ws)
+
+    result = await remote_exec.execute_remote("echo hi", False, "laptop-host", None, AsyncMock())
+
+    assert result["ok"] is False
+    assert "error" in result
+    assert remote_exec._pending_exec == {}

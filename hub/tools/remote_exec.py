@@ -15,7 +15,11 @@ remote-agent round trip: the agent replies with a result message that must
 be routed back to the coroutine waiting on it. It is conceptually the same
 pattern as ``pending_confirmations`` but a distinct namespace, since it
 carries a different kind of payload (an execution result, not an
-approve/decline boolean).
+approve/decline boolean). Each entry stores the agent WebSocket the request
+was dispatched to alongside the future, so a reply arriving on a *different*
+connection (e.g. a stale/impersonating agent naming someone else's
+request_id) cannot resolve it — only the connection the command was actually
+sent to can.
 """
 
 from __future__ import annotations
@@ -29,7 +33,7 @@ from hub.tools import shell
 
 CONFIRMATION_TIMEOUT_SECONDS = 90
 
-_pending_exec: dict[str, asyncio.Future] = {}
+_pending_exec: dict[str, tuple[asyncio.Future, object]] = {}
 
 
 async def execute_remote(
@@ -67,10 +71,11 @@ async def execute_remote(
                     "target_device": target,
                 }
             )
-            try:
-                approved = await asyncio.wait_for(future, timeout=CONFIRMATION_TIMEOUT_SECONDS)
-            except asyncio.TimeoutError:
-                return {"ok": False, "error": "confirmation timed out — not executed"}
+            approved = await asyncio.wait_for(future, timeout=CONFIRMATION_TIMEOUT_SECONDS)
+        except asyncio.TimeoutError:
+            return {"ok": False, "error": "confirmation timed out — not executed"}
+        except Exception as exc:
+            return {"ok": False, "error": f"failed to request confirmation: {exc}"}
         finally:
             pending_confirmations.discard(request_id)
 
@@ -86,7 +91,7 @@ async def execute_remote(
 
     request_id = str(uuid.uuid4())
     future = asyncio.get_running_loop().create_future()
-    _pending_exec[request_id] = future
+    _pending_exec[request_id] = (future, agent_ws)
     try:
         await agent_ws.send_json(
             {
@@ -96,26 +101,37 @@ async def execute_remote(
                 "timeout": timeout,
             }
         )
-        try:
-            result = await asyncio.wait_for(future, timeout=timeout + 10)
-        except asyncio.TimeoutError:
-            return {"ok": False, "error": "device did not respond in time"}
+        result = await asyncio.wait_for(future, timeout=timeout + 10)
+    except asyncio.TimeoutError:
+        return {"ok": False, "error": "device did not respond in time"}
+    except Exception as exc:
+        return {"ok": False, "error": f"failed to dispatch command to agent: {exc}"}
     finally:
         _pending_exec.pop(request_id, None)
 
     return result
 
 
-def resolve_exec_result(request_id: str, result: dict) -> bool:
+def resolve_exec_result(request_id: str, responding_ws, result: dict) -> bool:
     """Deliver ``result`` to the coroutine awaiting ``request_id``.
 
-    Returns False if the id is unknown (already resolved, discarded, or
-    never created); True otherwise. Same found/not-found semantics as
+    Only resolves if ``responding_ws`` is the same connection the request
+    was dispatched to — a reply naming someone else's ``request_id`` from a
+    different connection is treated as not found, same as an unknown id, so
+    the caller can't distinguish "wrong id" from "wrong connection" and the
+    original waiter is left intact for its real agent to resolve later.
+
+    Returns False if the id is unknown or the connection doesn't match;
+    True otherwise. Same found/not-found semantics as
     ``pending_confirmations.resolve``.
     """
-    future = _pending_exec.pop(request_id, None)
-    if future is None:
+    entry = _pending_exec.get(request_id)
+    if entry is None:
         return False
+    future, agent_ws = entry
+    if responding_ws is not agent_ws:
+        return False
+    _pending_exec.pop(request_id, None)
     if not future.done():
         future.set_result(result)
     return True
