@@ -35,6 +35,10 @@ cp hub/.env.template hub/.env
 # Edit hub/.env — set OLLAMA_BASE_URL and OLLAMA_MODEL
 # HUB_HOST defaults to 127.0.0.1 (local only). To let other devices connect,
 # set HUB_HOST in hub/.env to this machine's Tailscale IP.
+# IMPORTANT: once you do, the hub stops listening on 127.0.0.1 entirely —
+# EVERY client's hub_url must point at that same Tailscale IP, including a
+# client running on the hub machine itself; "ws://localhost:7865/ws" will no
+# longer connect anywhere.
 
 # Run Ollama (separate terminal)
 ollama serve

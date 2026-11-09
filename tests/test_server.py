@@ -616,6 +616,48 @@ class TestDeviceWebSockets:
             assert kwargs["origin_device_id"] == hub_id
         assert devices.is_hub_device(hub_id) is True  # still the hub after chat disconnects
 
+    def test_hub_host_peer_recognized_as_local(self, temp_db, monkeypatch):
+        """If HUB_HOST is set to a non-loopback address (e.g. the hub's
+        Tailscale IP, per README instructions for enabling remote access), a
+        client connecting via that SAME address from the same physical
+        machine must still be recognized as local."""
+        from fastapi.testclient import TestClient
+        from hub.server import app
+
+        tailscale_ip = "100.98.135.70"
+        monkeypatch.setenv("HUB_HOST", tailscale_ip)
+        same_machine_client = TestClient(app, client=(tailscale_ip, 50000))
+        hub_id = devices.register_hub_self()
+        with patch("hub.server.brain.process_turn", side_effect=_reply_done) as mock_turn:
+            with same_machine_client.websocket_connect("/ws") as ws:
+                ws.send_json({"type": "register_device", "device_id": hub_id, "device_name": "hub"})
+                ws.send_json({"type": "message", "text": "hello"})
+                ws.receive_json()
+                ws.receive_json()
+
+            _, kwargs = mock_turn.call_args
+            assert kwargs["origin_device_id"] == hub_id
+
+    def test_other_tailnet_peer_at_hub_host_address_not_treated_as_every_device(self, temp_db, monkeypatch):
+        """A peer address that does NOT match HUB_HOST's configured value
+        (i.e. a genuinely different device on the tailnet) must still be
+        rejected — this is not a broad "whole tailnet is local" change."""
+        from fastapi.testclient import TestClient
+        from hub.server import app
+
+        monkeypatch.setenv("HUB_HOST", "100.98.135.70")  # the hub's own address
+        other_peer_client = TestClient(app, client=("100.74.253.30", 50000))  # a different tailnet device
+        hub_id = devices.register_hub_self()
+        with patch("hub.server.brain.process_turn", side_effect=_reply_done) as mock_turn:
+            with other_peer_client.websocket_connect("/ws") as ws:
+                ws.send_json({"type": "register_device", "device_id": hub_id, "device_name": "hub"})
+                ws.send_json({"type": "message", "text": "hello"})
+                ws.receive_json()
+                ws.receive_json()
+
+            _, kwargs = mock_turn.call_args
+            assert kwargs["origin_device_id"] is None
+
     def test_remote_chat_cannot_claim_hub_device_id(self, temp_db):
         from fastapi.testclient import TestClient
         from hub.server import app

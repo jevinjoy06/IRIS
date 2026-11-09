@@ -32,8 +32,26 @@ _LOOPBACK_HOSTS = ("127.0.0.1", "::1")
 
 
 def _is_loopback(ws: WebSocket) -> bool:
-    """True if the peer address is loopback (a client on the hub machine itself)."""
-    return ws.client is not None and ws.client.host in _LOOPBACK_HOSTS
+    """True if the peer address is loopback, or equals the hub's own
+    currently-configured HUB_HOST.
+
+    uvicorn binds to exactly one host. If HUB_HOST is set to a non-loopback
+    address (e.g. the hub's Tailscale IP, so remote devices can reach it),
+    the hub stops listening on 127.0.0.1/::1 entirely — so a client on the
+    hub machine itself has to reconnect via that same address instead of
+    localhost. Its peer address is then HUB_HOST's value, not loopback, but
+    it's still physically the same machine, so it must still be recognized
+    as local (e.g. to claim the hub's own device_id). This does NOT treat
+    every device on the tailnet as local — only a peer address that matches
+    the hub's own bind address exactly.
+    """
+    if ws.client is None:
+        return False
+    host = ws.client.host
+    if host in _LOOPBACK_HOSTS:
+        return True
+    configured_host = os.environ.get("HUB_HOST", "127.0.0.1")
+    return host == configured_host
 
 
 async def _silence_monitor() -> None:
@@ -313,6 +331,10 @@ async def agent_websocket_endpoint(ws: WebSocket) -> None:
                     remote_exec.resolve_exec_result(request_id, ws, data)
     finally:
         devices.unregister_agent(ws)
+        # Fail any command still pending for this exact connection immediately
+        # instead of making the hub wait out the full timeout for a reply
+        # that can now never arrive.
+        remote_exec.fail_pending_for_ws(ws)
 
 
 # Pydantic models for REST API
