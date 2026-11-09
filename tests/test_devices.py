@@ -131,6 +131,7 @@ def test_empty_device_id_is_rejected():
     assert devices.get_agent_ws("") is None
     assert devices.list_connected() == []
 
+
 @pytest.mark.parametrize(
     "bad_id",
     [
@@ -150,6 +151,7 @@ def test_unsafe_device_id_is_rejected(bad_id):
     assert devices.get_device_id_for_chat_ws(chat_ws) is None
     assert devices.get_agent_ws(bad_id) is None
     assert devices.list_connected() == []
+
 
 @pytest.mark.parametrize(
     "bad_name",
@@ -173,12 +175,14 @@ def test_unsafe_device_name_rejects_whole_registration(bad_name):
     assert devices.get_agent_ws("laptop-host") is None
     assert devices.list_connected() == []
 
+
 def test_safe_charset_device_id_and_name_are_accepted():
     ws = object()
     devices.register_agent("My Laptop_1.local-2", "Desk PC.v2_x", ws)
     assert devices.get_agent_ws("My Laptop_1.local-2") is ws
     entries = {d["device_id"]: d for d in devices.list_connected()}
     assert entries["My Laptop_1.local-2"]["device_name"] == "Desk PC.v2_x"
+
 
 def test_boundary_length_64_is_accepted_and_65_rejected():
     ok_id = "a" * 64
