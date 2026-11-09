@@ -4,6 +4,21 @@ import OrbHero from './components/OrbHero'
 import InputBar from './components/InputBar'
 import TransientResponse from './components/TransientResponse'
 
+// The confirmation prompt is the one safety gate destructive hub actions go
+// through, so it must not be spoofable: zero-width characters, bidi-override
+// characters ("Trojan Source"), and other control characters can make
+// displayed text read differently from the bytes actually being approved.
+// Replace each with a visible \u{XXXX} marker rather than letting it render
+// invisibly or reorder the surrounding text.
+const SPOOFABLE_CHARS = /[\u0000-\u001F\u007F-\u009F​-‏⁠‪-‮⁦-⁩﻿]/g
+function sanitizeForDisplay(str) {
+  if (typeof str !== 'string') return str
+  return str.replace(
+    SPOOFABLE_CHARS,
+    (ch) => `\\u{${ch.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')}}`
+  )
+}
+
 function useOrbSize() {
   const [size, setSize] = useState(() => Math.min(window.innerWidth, window.innerHeight) * 0.55)
   useEffect(() => {
@@ -242,8 +257,14 @@ export default function App() {
         <div className="absolute left-0 right-0 bottom-28 flex justify-center px-10 z-20">
           <div className="flex flex-col items-center gap-3 bg-white/[0.04] backdrop-blur-2xl border border-white/[0.07] rounded-2xl px-6 py-4 max-w-2xl">
             <p className="text-sm font-light tracking-wide leading-relaxed text-white/80 text-center">
-              Run <span className="text-white/95">{pendingConfirmation.command}</span> on{' '}
-              <span className="text-white/95">{pendingConfirmation.targetDevice}</span>?
+              Run{' '}
+              <span className="font-mono whitespace-pre-wrap break-all text-white/95">
+                {sanitizeForDisplay(pendingConfirmation.command)}
+              </span>{' '}
+              on{' '}
+              <span className="font-mono text-white/95">
+                {sanitizeForDisplay(pendingConfirmation.targetDevice)}
+              </span>?
             </p>
             <div className="flex items-center gap-2">
               <button
