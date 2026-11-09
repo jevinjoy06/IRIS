@@ -6,15 +6,19 @@ import TransientResponse from './components/TransientResponse'
 
 // The confirmation prompt is the one safety gate destructive hub actions go
 // through, so it must not be spoofable: zero-width characters, bidi-override
-// characters ("Trojan Source"), and other control characters can make
-// displayed text read differently from the bytes actually being approved.
-// Replace each with a visible \u{XXXX} marker rather than letting it render
-// invisibly or reorder the surrounding text.
-const SPOOFABLE_CHARS = /[\u0000-\u001F\u007F-\u009F​-‏⁠‪-‮⁦-⁩﻿]/g
+// characters ("Trojan Source"), and other invisible/format characters can
+// make displayed text read differently from the bytes actually being
+// approved. Rather than denylist specific Unicode categories (which only
+// ever covers the spoofing tricks already known about), allowlist printable
+// ASCII and escape everything else to a visible \u{XXXX} marker. This is
+// scoped to this one dialog — a non-ASCII filename/argument will render as
+// escapes instead of its real glyphs, which is an acceptable tradeoff here,
+// but this helper should not be reused for general chat text elsewhere.
+const PRINTABLE_ASCII = /[^\x20-\x7E]/g
 function sanitizeForDisplay(str) {
   if (typeof str !== 'string') return str
   return str.replace(
-    SPOOFABLE_CHARS,
+    PRINTABLE_ASCII,
     (ch) => `\\u{${ch.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')}}`
   )
 }
@@ -262,7 +266,7 @@ export default function App() {
                 {sanitizeForDisplay(pendingConfirmation.command)}
               </span>{' '}
               on{' '}
-              <span className="font-mono text-white/95">
+              <span className="font-mono whitespace-pre-wrap break-all text-white/95">
                 {sanitizeForDisplay(pendingConfirmation.targetDevice)}
               </span>?
             </p>
