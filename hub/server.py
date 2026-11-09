@@ -15,13 +15,18 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from hub import brain, memory
+from hub import brain, devices, memory, pending_confirmations
+from hub.tools import remote_exec
 from hub.tools.system_info import get_system_info
 
 _STATIC = Path(__file__).parent / "static"
 
 # Session activity tracking: session_id -> {"ws": WebSocket, "turn_count": int, "last_message_at": datetime, "checkin_sent": bool, "tier2_sent": bool}
 _active_sessions: dict = {}
+
+# Queue sentinel the /ws reader task posts when the socket closes. A private
+# object rather than a {"type": ...} dict, so a client can't forge it.
+_DISCONNECT = object()
 
 
 async def _silence_monitor() -> None:
@@ -81,6 +86,7 @@ async def _silence_monitor() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     memory.init_db()
+    devices.register_hub_self()
     asyncio.create_task(_silence_monitor())
     yield
 
@@ -142,18 +148,69 @@ async def websocket_endpoint(ws: WebSocket) -> None:
         "tier2_sent": False,
     }
 
+    # Receiving is decoupled from turn processing. A turn can block for a long
+    # time inside process_turn (e.g. execute_remote awaiting a destructive-
+    # command confirmation), and the confirm_response that unblocks it arrives
+    # on this same socket. If the turn loop were also the only thing calling
+    # receive_json(), that reply could never be read: deadlock. So a reader
+    # task owns the socket's receive side, handles the side-channel messages
+    # (register_device, confirm_response) immediately, and queues everything
+    # else for the turn loop below.
+    inbound_queue: asyncio.Queue = asyncio.Queue()
+
+    async def reader() -> None:
+        try:
+            while True:
+                try:
+                    data = await ws.receive_json()
+                except WebSocketDisconnect:
+                    return
+                except Exception as e:
+                    # Malformed frame (bad JSON, wrong types, etc.) — report it and
+                    # keep listening instead of killing the whole session over one
+                    # bad message. A voice client hiccup shouldn't end the conversation.
+                    await ws.send_json({"type": "error", "text": f"Malformed message: {e}"})
+                    continue
+
+                if not isinstance(data, dict):
+                    await ws.send_json(
+                        {"type": "error", "text": "Malformed message: expected a JSON object"}
+                    )
+                    continue
+
+                msg_type = data.get("type")
+                if msg_type == "register_device":
+                    device_id = data.get("device_id")
+                    device_name = data.get("device_name")
+                    if not isinstance(device_id, str) or not (
+                        device_name is None or isinstance(device_name, str)
+                    ):
+                        await ws.send_json(
+                            {"type": "error", "text": "register_device needs a string device_id"}
+                        )
+                        continue
+                    devices.register_chat(device_id, device_name, ws)
+                elif msg_type == "confirm_response":
+                    request_id = data.get("request_id")
+                    if isinstance(request_id, str):
+                        # Fail closed: only a literal JSON true approves. bool()
+                        # would treat e.g. the string "false" as approval.
+                        pending_confirmations.resolve(request_id, data.get("approved") is True)
+                else:
+                    await inbound_queue.put(data)
+        finally:
+            # However the reader ends (clean disconnect, or a send failing on a
+            # dead socket), wake the turn loop so the session is torn down
+            # instead of waiting on the queue forever.
+            inbound_queue.put_nowait(_DISCONNECT)
+
+    reader_task = asyncio.create_task(reader())
+
     try:
         while True:
-            try:
-                data = await ws.receive_json()
-            except WebSocketDisconnect:
-                raise
-            except Exception as e:
-                # Malformed frame (bad JSON, wrong types, etc.) — report it and
-                # keep listening instead of killing the whole session over one
-                # bad message. A voice client hiccup shouldn't end the conversation.
-                await ws.send_json({"type": "error", "text": f"Malformed message: {e}"})
-                continue
+            data = await inbound_queue.get()
+            if data is _DISCONNECT:
+                raise WebSocketDisconnect()
 
             try:
                 if data.get("type") == "message":
@@ -177,6 +234,7 @@ async def websocket_endpoint(ws: WebSocket) -> None:
                             ws,
                             session_id=session_id,
                             turn_number=turn_count,
+                            origin_device_id=devices.get_device_id_for_chat_ws(ws),
                         )
 
                         # If session was closed, start a new one
@@ -199,8 +257,53 @@ async def websocket_endpoint(ws: WebSocket) -> None:
     except WebSocketDisconnect:
         pass
     finally:
+        reader_task.cancel()
+        # Retrieve the task's outcome (cancellation or a send error on a dead
+        # socket) so it isn't logged as "exception was never retrieved".
+        await asyncio.gather(reader_task, return_exceptions=True)
         _connected_clients.discard(ws)
         _active_sessions.pop(session_id, None)
+        devices.unregister_chat(ws)
+
+
+@app.websocket("/ws/agent")
+async def agent_websocket_endpoint(ws: WebSocket) -> None:
+    """Connection from a device's background agent, which executes commands."""
+    await ws.accept()
+    try:
+        while True:
+            try:
+                data = await ws.receive_json()
+            except WebSocketDisconnect:
+                break
+            except Exception as e:
+                await ws.send_json({"type": "error", "text": f"Malformed message: {e}"})
+                continue
+
+            if not isinstance(data, dict):
+                await ws.send_json(
+                    {"type": "error", "text": "Malformed message: expected a JSON object"}
+                )
+                continue
+
+            msg_type = data.get("type")
+            if msg_type == "register":
+                device_id = data.get("device_id")
+                device_name = data.get("device_name")
+                if not isinstance(device_id, str) or not (
+                    device_name is None or isinstance(device_name, str)
+                ):
+                    await ws.send_json(
+                        {"type": "error", "text": "register needs a string device_id"}
+                    )
+                    continue
+                devices.register_agent(device_id, device_name, ws)
+            elif msg_type == "exec_result":
+                request_id = data.get("request_id")
+                if isinstance(request_id, str):
+                    remote_exec.resolve_exec_result(request_id, ws, data)
+    finally:
+        devices.unregister_agent(ws)
 
 
 # Pydantic models for REST API

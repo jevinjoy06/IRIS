@@ -1,10 +1,14 @@
-"""Test suite for hub/server.py — REST API endpoints."""
+"""Test suite for hub/server.py — REST API and WebSocket endpoints."""
+import asyncio
 import json
+import time
 import uuid
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from hub import memory
+from hub import devices, memory, pending_confirmations
+from hub.tools import remote_exec
 
 
 class TestFactsEndpoints:
@@ -470,3 +474,202 @@ class TestAPIIntegration:
 
         assert len(facts) == 1
         assert facts[0]["content"] == "Active"
+
+
+def _wait_until(predicate, timeout: float = 2.0) -> bool:
+    """Poll ``predicate`` until true or ``timeout`` elapses (the server runs in another thread)."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        time.sleep(0.01)
+    return predicate()
+
+
+def _connected_ids() -> dict:
+    return {d["device_id"]: d for d in devices.list_connected()}
+
+
+async def _reply_done(text, ws, **kwargs):
+    """process_turn stand-in that sends one token + done so receive_json() never hangs."""
+    await ws.send_json({"type": "token", "text": f"echo:{text}"})
+    await ws.send_json({"type": "done"})
+    return False
+
+
+class TestDeviceWebSockets:
+    """Tests for /ws/agent and the device/confirmation messages on /ws."""
+
+    def setup_method(self):
+        devices.reset_for_tests()
+
+    def teardown_method(self):
+        devices.reset_for_tests()
+
+    # ---- /ws/agent -------------------------------------------------------
+
+    def test_agent_register_adds_device(self, client, temp_db):
+        with client.websocket_connect("/ws/agent") as ws:
+            ws.send_json({"type": "register", "device_id": "laptop-host", "device_name": "laptop"})
+            ws.send_json({"type": "exec_result", "request_id": "doesnt-matter", "ok": True})
+
+        assert "laptop-host" not in _connected_ids()  # disconnected on exit
+
+    def test_agent_register_then_connected_while_open(self, client, temp_db):
+        with client.websocket_connect("/ws/agent") as ws:
+            ws.send_json({"type": "register", "device_id": "laptop-host", "device_name": "laptop"})
+            assert _wait_until(lambda: "laptop-host" in _connected_ids())
+            connected = _connected_ids()
+            assert connected["laptop-host"]["can_execute"] is True
+            assert connected["laptop-host"]["device_name"] == "laptop"
+
+    def test_agent_unmatched_exec_result_does_not_crash(self, client, temp_db):
+        with client.websocket_connect("/ws/agent") as ws:
+            ws.send_json({"type": "register", "device_id": "laptop-host", "device_name": "laptop"})
+            # No pending future for this id -> resolve_exec_result returns False.
+            ws.send_json({"type": "exec_result", "request_id": "req-xyz", "ok": True, "stdout": "done"})
+            # The connection must still be processing messages afterwards.
+            ws.send_json({"type": "register", "device_id": "laptop-host", "device_name": "renamed"})
+            assert _wait_until(
+                lambda: _connected_ids().get("laptop-host", {}).get("device_name") == "renamed"
+            )
+
+    def test_agent_exec_result_resolves_pending_future(self, client, temp_db):
+        """End to end: a chat turn dispatches to the agent, the agent's reply resolves it."""
+
+        async def turn_runs_remote_command(text, ws, **kwargs):
+            result = await asyncio.wait_for(
+                remote_exec.execute_remote(
+                    "echo hi", False, None, kwargs.get("origin_device_id"), ws, timeout=5
+                ),
+                timeout=10,
+            )
+            await ws.send_json({"type": "token", "text": json.dumps(result)})
+            await ws.send_json({"type": "done"})
+            return False
+
+        with patch("hub.server.brain.process_turn", side_effect=turn_runs_remote_command):
+            # `with client:` gives both sockets one shared event loop, so a future
+            # created by the chat handler can be resolved by the agent handler.
+            with client:
+                with client.websocket_connect("/ws/agent") as agent, client.websocket_connect("/ws") as chat:
+                    agent.send_json({"type": "register", "device_id": "laptop-host", "device_name": "laptop"})
+                    chat.send_json({"type": "register_device", "device_id": "laptop-host", "device_name": "laptop"})
+                    # The chat's register_device is ordered before its message on the
+                    # same socket; only the agent registration (other socket) can race.
+                    assert _wait_until(lambda: devices.get_agent_ws("laptop-host") is not None)
+                    chat.send_json({"type": "message", "text": "run it"})
+
+                    cmd = agent.receive_json()
+                    assert cmd["type"] == "exec_command"
+                    assert cmd["command"] == "echo hi"
+                    agent.send_json({
+                        "type": "exec_result",
+                        "request_id": cmd["request_id"],
+                        "ok": True,
+                        "stdout": "hi\n",
+                    })
+
+                    token = chat.receive_json()
+                    assert token["type"] == "token"
+                    result = json.loads(token["text"])
+                    assert result["ok"] is True
+                    assert result["stdout"] == "hi\n"
+                    assert chat.receive_json() == {"type": "done"}
+
+    def test_agent_disconnect_unregisters(self, client, temp_db):
+        with client.websocket_connect("/ws/agent") as ws:
+            ws.send_json({"type": "register", "device_id": "laptop-host", "device_name": "laptop"})
+            assert _wait_until(lambda: "laptop-host" in _connected_ids())
+        assert devices.get_agent_ws("laptop-host") is None
+
+    # ---- /ws register_device / confirm_response ------------------------
+
+    def test_chat_register_device_sets_origin(self, client, temp_db):
+        with patch("hub.server.brain.process_turn", side_effect=_reply_done) as mock_turn:
+            with client.websocket_connect("/ws") as ws:
+                ws.send_json({"type": "register_device", "device_id": "desktop-host", "device_name": "desktop"})
+                ws.send_json({"type": "message", "text": "hello"})
+                assert ws.receive_json() == {"type": "token", "text": "echo:hello"}
+                assert ws.receive_json() == {"type": "done"}
+
+            assert mock_turn.called
+            _, kwargs = mock_turn.call_args
+            assert kwargs["origin_device_id"] == "desktop-host"
+
+    def test_chat_without_register_device_has_no_origin(self, client, temp_db):
+        with patch("hub.server.brain.process_turn", side_effect=_reply_done) as mock_turn:
+            with client.websocket_connect("/ws") as ws:
+                ws.send_json({"type": "message", "text": "hello"})
+                ws.receive_json()
+                ws.receive_json()
+
+            _, kwargs = mock_turn.call_args
+            assert kwargs["origin_device_id"] is None
+
+    def test_chat_disconnect_clears_device(self, client, temp_db):
+        with client.websocket_connect("/ws") as ws:
+            ws.send_json({"type": "register_device", "device_id": "desktop-host", "device_name": "desktop"})
+            assert _wait_until(lambda: "desktop-host" in _connected_ids())
+            assert _connected_ids()["desktop-host"]["can_execute"] is False
+
+        assert "desktop-host" not in _connected_ids()
+
+    def test_confirm_response_resolves_future_not_process_turn(self, client, temp_db):
+        with patch("hub.server.brain.process_turn", new_callable=AsyncMock, return_value=False) as mock_turn, \
+                patch("hub.server.pending_confirmations.resolve", return_value=True) as mock_resolve:
+            with client.websocket_connect("/ws") as ws:
+                ws.send_json({"type": "confirm_response", "request_id": "req-abc", "approved": True})
+                assert _wait_until(lambda: mock_resolve.called)
+
+            mock_resolve.assert_called_once_with("req-abc", True)
+            assert mock_turn.called is False
+
+    def test_confirm_response_non_boolean_approved_fails_closed(self, client, temp_db):
+        with patch("hub.server.pending_confirmations.resolve", return_value=True) as mock_resolve:
+            with client.websocket_connect("/ws") as ws:
+                ws.send_json({"type": "confirm_response", "request_id": "req-abc", "approved": "false"})
+                assert _wait_until(lambda: mock_resolve.called)
+
+            mock_resolve.assert_called_once_with("req-abc", False)
+
+    def test_confirm_response_arrives_while_turn_in_flight(self, client, temp_db):
+        """Regression for the deadlock the reader task exists to prevent.
+
+        The turn awaits a confirmation future; the confirm_response must be
+        read and resolved while process_turn is still running.
+        """
+
+        async def turn_awaiting_confirmation(text, ws, **kwargs):
+            future = pending_confirmations.create("req-inflight")
+            try:
+                await ws.send_json({"type": "confirm_required", "request_id": "req-inflight"})
+                try:
+                    approved = await asyncio.wait_for(future, timeout=5)
+                    outcome = f"approved={approved}"
+                except asyncio.TimeoutError:
+                    outcome = "timed out"
+            finally:
+                pending_confirmations.discard("req-inflight")
+            await ws.send_json({"type": "token", "text": outcome})
+            await ws.send_json({"type": "done"})
+            return False
+
+        with patch("hub.server.brain.process_turn", side_effect=turn_awaiting_confirmation):
+            with client.websocket_connect("/ws") as ws:
+                ws.send_json({"type": "message", "text": "delete stuff"})
+                assert ws.receive_json() == {"type": "confirm_required", "request_id": "req-inflight"}
+                ws.send_json({"type": "confirm_response", "request_id": "req-inflight", "approved": False})
+                assert ws.receive_json() == {"type": "token", "text": "approved=False"}
+                assert ws.receive_json() == {"type": "done"}
+
+    def test_malformed_frame_reports_error_and_session_continues(self, client, temp_db):
+        with patch("hub.server.brain.process_turn", side_effect=_reply_done):
+            with client.websocket_connect("/ws") as ws:
+                ws.send_text("not json {")
+                err = ws.receive_json()
+                assert err["type"] == "error"
+                assert "Malformed message" in err["text"]
+                ws.send_json({"type": "message", "text": "still here"})
+                assert ws.receive_json() == {"type": "token", "text": "echo:still here"}
+                assert ws.receive_json() == {"type": "done"}
