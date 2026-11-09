@@ -64,20 +64,3 @@ def execute(command: str, timeout: int = 30) -> dict:
             "stderr": "",
             "returncode": -1,
         }
-
-
-def run_command(command: str, timeout: int = 30) -> dict:
-    """
-    Backward-compatible wrapper: refuses destructive commands, then executes.
-    Kept so the existing shell_run dispatch path behaves as before. Slated for
-    removal when the shell_run tool is retired.
-    """
-    if is_destructive_pattern(command):
-        return {
-            "ok": False,
-            "error": "Refused: command matches dangerous pattern",
-            "stdout": "",
-            "stderr": "",
-            "returncode": -1,
-        }
-    return execute(command, timeout)

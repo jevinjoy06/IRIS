@@ -12,7 +12,7 @@ from typing import Any
 # ============================================================================
 
 class TestShell:
-    """Tests for hub/tools/shell.py — execute(), is_destructive_pattern(), run_command()"""
+    """Tests for hub/tools/shell.py — execute(), is_destructive_pattern()"""
 
     def test_execute_simple_command_success(self):
         from hub.tools import shell
@@ -68,20 +68,6 @@ class TestShell:
             mock_run.return_value = Mock(stdout="", stderr="", returncode=0)
             shell.execute("echo test", timeout=100)
             assert mock_run.call_args[1]["timeout"] == 30
-
-    def test_run_command_refuses_destructive(self):
-        """Backward-compatible wrapper still hard-refuses destructive commands."""
-        from hub.tools import shell
-        result = shell.run_command("format c:")
-        assert result["ok"] is False
-        assert "refused" in result["error"].lower()
-
-    def test_run_command_runs_safe_command(self):
-        """Backward-compatible wrapper still executes safe commands."""
-        from hub.tools import shell
-        result = shell.run_command("echo hello")
-        assert result["ok"] is True
-        assert "hello" in result["stdout"]
 
 
 # ============================================================================
@@ -618,19 +604,6 @@ class TestWindowControl:
 class TestRegistry:
     """Tests for hub/tools/registry.py — dispatch() and async_dispatch()"""
 
-    @patch("hub.tools.shell.run_command")
-    def test_dispatch_shell_run(self, mock_run_cmd):
-        """Test dispatch routes shell_run to shell.run_command."""
-        from hub.tools import registry
-
-        mock_run_cmd.return_value = {"ok": True, "stdout": "test", "stderr": "", "returncode": 0}
-
-        result_json = registry.dispatch("shell_run", {"command": "echo test"})
-        result = json.loads(result_json)
-
-        assert result["ok"] is True
-        mock_run_cmd.assert_called_once_with("echo test", 30)
-
     @patch("hub.tools.clipboard.read_clipboard")
     def test_dispatch_clipboard_read(self, mock_read):
         """Test dispatch routes clipboard_read."""
@@ -754,10 +727,10 @@ class TestRegistry:
         """Test dispatch exception handling."""
         from hub.tools import registry
 
-        with patch("hub.tools.shell.run_command") as mock_shell:
-            mock_shell.side_effect = RuntimeError("Shell error")
+        with patch("hub.tools.clipboard.read_clipboard") as mock_clipboard:
+            mock_clipboard.side_effect = RuntimeError("Clipboard error")
 
-            result_json = registry.dispatch("shell_run", {"command": "test"})
+            result_json = registry.dispatch("clipboard_read", {})
             result = json.loads(result_json)
 
             assert result["ok"] is False
@@ -782,20 +755,48 @@ class TestRegistry:
         mock_create_task.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch("hub.tools.shell.run_command", new_callable=MagicMock)
-    async def test_async_dispatch_delegates_to_sync(self, mock_run_cmd):
-        """Test async_dispatch delegates non-timer tools to sync dispatch."""
+    @patch("hub.tools.clipboard.read_clipboard", new_callable=MagicMock)
+    async def test_async_dispatch_delegates_to_sync(self, mock_read_clipboard):
+        """Test async_dispatch delegates non-timer, non-execute_command tools to sync dispatch."""
         from hub.tools import registry
 
-        mock_run_cmd.return_value = {"ok": True, "stdout": "output", "stderr": "", "returncode": 0}
+        mock_read_clipboard.return_value = {"ok": True, "text": "clipboard content"}
 
         mock_ws = MagicMock()
 
-        result_json = await registry.async_dispatch("shell_run", {"command": "echo test"}, mock_ws)
+        result_json = await registry.async_dispatch("clipboard_read", {}, mock_ws)
         result = json.loads(result_json)
 
         assert result["ok"] is True
-        mock_run_cmd.assert_called_once()
+        mock_read_clipboard.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_execute_command_dispatches_to_remote_exec(self, monkeypatch):
+        from hub.tools import registry
+        captured = {}
+
+        async def fake_execute_remote(command, destructive, target_device, origin_device_id, ws, timeout=30):
+            captured.update(locals())
+            return {"ok": True, "stdout": "ran", "stderr": "", "returncode": 0}
+
+        monkeypatch.setattr(registry, "execute_remote", fake_execute_remote)
+        result_json = await registry.async_dispatch(
+            "execute_command",
+            {"command": "echo hi", "destructive": False, "target_device": "laptop-host"},
+            AsyncMock(),
+            origin_device_id="desktop-host",
+        )
+        result = json.loads(result_json)
+        assert result["ok"] is True
+        assert captured["command"] == "echo hi"
+        assert captured["target_device"] == "laptop-host"
+        assert captured["origin_device_id"] == "desktop-host"
+
+    def test_shell_run_tool_definition_removed(self):
+        from hub.tools.registry import TOOL_DEFINITIONS
+        names = {t["function"]["name"] for t in TOOL_DEFINITIONS}
+        assert "shell_run" not in names
+        assert "execute_command" in names
 
 
 # ============================================================================
@@ -827,7 +828,7 @@ class TestToolDefinitions:
         tool_names = [t["function"]["name"] for t in registry.TOOL_DEFINITIONS]
 
         expected = [
-            "shell_run",
+            "execute_command",
             "clipboard_read",
             "clipboard_write",
             "system_info",

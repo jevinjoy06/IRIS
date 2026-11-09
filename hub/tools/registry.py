@@ -5,8 +5,10 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from fastapi import WebSocket
 
-from hub.tools import file_system, web_search, shell, clipboard, system_info, notifications, timers, window_control
+from hub.tools import file_system, web_search, clipboard, system_info, notifications, timers, window_control
+from hub.tools.remote_exec import execute_remote
 from hub import memory
+from hub import devices
 
 def _fn(name: str, description: str, parameters: dict) -> dict:
     return {"type": "function", "function": {"name": name, "description": description, "parameters": parameters}}
@@ -64,13 +66,21 @@ TOOL_DEFINITIONS = [
         },
         "required": ["query"],
     }),
-    _fn("shell_run", "Execute a shell command with output capture. Refuses obviously destructive patterns.", {
+    _fn("execute_command", "Execute a shell command on the hub machine or a connected device.", {
         "type": "object",
         "properties": {
             "command": {"type": "string", "description": "Shell command to execute"},
+            "destructive": {
+                "type": "boolean",
+                "description": "MUST be true for anything that deletes, overwrites, kills, formats, or is otherwise irreversible. The user will be asked to confirm when this is true.",
+            },
+            "target_device": {
+                "type": "string",
+                "description": "Exact device_id from the Connected devices list. Omit to target the device this request came from.",
+            },
             "timeout": {"type": "integer", "description": "Max execution time in seconds (default 30, max 30)"},
         },
-        "required": ["command"],
+        "required": ["command", "destructive"],
     }),
     _fn("clipboard_read", "Read the system clipboard.", {
         "type": "object",
@@ -149,11 +159,6 @@ def dispatch(tool_name: str, tool_input: dict) -> str:
         elif tool_name == "memory_recall":
             facts = memory.search_facts(tool_input["query"], tool_input.get("limit", 10))
             result = {"ok": True, "facts": facts}
-        elif tool_name == "shell_run":
-            result = shell.run_command(
-                tool_input["command"],
-                tool_input.get("timeout", 30),
-            )
         elif tool_name == "clipboard_read":
             result = clipboard.read_clipboard()
         elif tool_name == "clipboard_write":
@@ -184,7 +189,7 @@ def dispatch(tool_name: str, tool_input: dict) -> str:
     return json.dumps(result)
 
 
-async def async_dispatch(tool_name: str, tool_input: dict, ws: "WebSocket") -> str:
+async def async_dispatch(tool_name: str, tool_input: dict, ws: "WebSocket", origin_device_id: str | None = None) -> str:
     """
     Execute a tool and return a JSON string result (async dispatch).
     Handles tools that need async/WebSocket context.
@@ -196,6 +201,15 @@ async def async_dispatch(tool_name: str, tool_input: dict, ws: "WebSocket") -> s
             message = tool_input["message"]
             asyncio.create_task(timers.set_timer_task(seconds, message, ws))
             result = timers.set_timer(seconds, message)
+        elif tool_name == "execute_command":
+            result = await execute_remote(
+                tool_input["command"],
+                tool_input.get("destructive", False),
+                tool_input.get("target_device"),
+                origin_device_id,
+                ws,
+                tool_input.get("timeout", 30),
+            )
         else:
             result_json = dispatch(tool_name, tool_input)
             result = json.loads(result_json)
