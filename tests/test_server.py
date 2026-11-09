@@ -597,10 +597,16 @@ class TestDeviceWebSockets:
             _, kwargs = mock_turn.call_args
             assert kwargs["origin_device_id"] == "desktop-host"
 
-    def test_local_chat_with_hub_device_id_gets_hub_as_origin(self, client, temp_db):
+    def test_local_chat_with_hub_device_id_gets_hub_as_origin(self, temp_db):
+        from fastapi.testclient import TestClient
+        from hub.server import app
+
+        # TestClient's default peer is ("testclient", 50000), which is NOT
+        # loopback; pin a loopback peer to model a client on the hub machine.
+        local_client = TestClient(app, client=("127.0.0.1", 50000))
         hub_id = devices.register_hub_self()
         with patch("hub.server.brain.process_turn", side_effect=_reply_done) as mock_turn:
-            with client.websocket_connect("/ws") as ws:
+            with local_client.websocket_connect("/ws") as ws:
                 ws.send_json({"type": "register_device", "device_id": hub_id, "device_name": "hub"})
                 ws.send_json({"type": "message", "text": "hello"})
                 ws.receive_json()
@@ -609,6 +615,22 @@ class TestDeviceWebSockets:
             _, kwargs = mock_turn.call_args
             assert kwargs["origin_device_id"] == hub_id
         assert devices.is_hub_device(hub_id) is True  # still the hub after chat disconnects
+
+    def test_remote_chat_cannot_claim_hub_device_id(self, temp_db):
+        from fastapi.testclient import TestClient
+        from hub.server import app
+
+        remote_client = TestClient(app, client=("100.64.0.7", 50000))  # e.g. a Tailscale peer
+        hub_id = devices.register_hub_self()
+        with patch("hub.server.brain.process_turn", side_effect=_reply_done) as mock_turn:
+            with remote_client.websocket_connect("/ws") as ws:
+                ws.send_json({"type": "register_device", "device_id": hub_id, "device_name": "hub"})
+                ws.send_json({"type": "message", "text": "hello"})
+                ws.receive_json()
+                ws.receive_json()
+
+            _, kwargs = mock_turn.call_args
+            assert kwargs["origin_device_id"] is None
 
     def test_chat_without_register_device_has_no_origin(self, client, temp_db):
         with patch("hub.server.brain.process_turn", side_effect=_reply_done) as mock_turn:

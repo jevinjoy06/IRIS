@@ -47,11 +47,12 @@ def _get_or_create(device_id: str, device_name: str | None) -> DeviceEntry:
 def register_hub_self() -> str:
     """Register the hub's own machine as an always-connected device.
 
-    Chat/agent connections may attach to the hub's device_id: a client run
-    locally on the hub machine reports the same hostname, and must be
-    recognized as the hub's own chat session so default targeting works.
-    Commands aimed at the hub always run in-process (``is_hub_device``),
-    whatever connections are attached to the entry.
+    The hub's device_id is reserved. A chat connection may claim it only if
+    it is genuinely local (loopback): that is a client run on the hub
+    machine, which reports the same hostname and must be recognized as the
+    hub's own chat session so default targeting works. A remote connection
+    cannot claim it, and no agent ever can (the hub executes in-process, not
+    over ``/ws/agent``). See ``register_chat`` / ``register_agent``.
     """
     device_id = socket.gethostname()
     device_name = os.environ.get("HUB_DEVICE_NAME", "hub")
@@ -67,9 +68,24 @@ def get_hub_device_id() -> str | None:
     return None
 
 
-def register_chat(device_id: str, device_name: str | None, ws: Any) -> None:
+def _is_hub_id(device_id: str) -> bool:
+    return device_id == get_hub_device_id()
+
+
+def register_chat(
+    device_id: str, device_name: str | None, ws: Any, *, is_local: bool = False
+) -> None:
+    """Attach chat connection ``ws`` to ``device_id``.
+
+    Ignored for an empty ``device_id``, and for a claim of the hub's own
+    device_id from a non-local connection. A socket re-registering under a
+    new id is detached from its previous entry first.
+    """
     if not device_id:
         return
+    if _is_hub_id(device_id) and not is_local:
+        return
+    unregister_chat(ws)
     _get_or_create(device_id, device_name).chat_ws = ws
 
 
@@ -80,8 +96,15 @@ def unregister_chat(ws: Any) -> None:
 
 
 def register_agent(device_id: str, device_name: str | None, ws: Any) -> None:
-    if not device_id:
+    """Attach agent connection ``ws`` to ``device_id``.
+
+    Ignored for an empty ``device_id`` and, unconditionally, for the hub's
+    own device_id. A socket re-registering under a new id is detached from
+    its previous entry first.
+    """
+    if not device_id or _is_hub_id(device_id):
         return
+    unregister_agent(ws)
     _get_or_create(device_id, device_name).agent_ws = ws
 
 

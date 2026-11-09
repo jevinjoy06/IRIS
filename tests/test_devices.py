@@ -77,7 +77,7 @@ def test_local_chat_on_hub_machine_is_recognized_as_hub():
     # recognized so commands default to running on the hub.
     hub_id = devices.register_hub_self()
     ws = object()
-    devices.register_chat(hub_id, "hub", ws)
+    devices.register_chat(hub_id, "hub", ws, is_local=True)
     assert devices.get_device_id_for_chat_ws(ws) == hub_id
     assert devices.is_hub_device(hub_id) is True
     entries = {d["device_id"]: d for d in devices.list_connected()}
@@ -87,6 +87,39 @@ def test_local_chat_on_hub_machine_is_recognized_as_hub():
     devices.unregister_chat(ws)
     assert devices.get_device_id_for_chat_ws(ws) is None
     assert devices.is_connected(hub_id) is True  # the hub itself stays live
+
+def test_remote_chat_cannot_claim_hub_device_id():
+    hub_id = devices.register_hub_self()
+    omitted, explicit = object(), object()
+    devices.register_chat(hub_id, "hub", omitted)
+    devices.register_chat(hub_id, "hub", explicit, is_local=False)
+    assert devices.get_device_id_for_chat_ws(omitted) is None
+    assert devices.get_device_id_for_chat_ws(explicit) is None
+
+def test_agent_cannot_claim_hub_device_id():
+    hub_id = devices.register_hub_self()
+    ws = object()
+    devices.register_agent(hub_id, "hub", ws)
+    assert devices.get_agent_ws(hub_id) is None
+    entries = {d["device_id"]: d for d in devices.list_connected()}
+    assert list(entries) == [hub_id]  # still just the hub itself, no agent attached
+
+def test_chat_reregistering_under_new_id_detaches_old_entry():
+    ws = object()
+    devices.register_chat("old-host", "old", ws)
+    devices.register_chat("new-host", "new", ws)
+    assert devices.get_device_id_for_chat_ws(ws) == "new-host"
+    ids = {d["device_id"] for d in devices.list_connected()}
+    assert ids == {"new-host"}
+
+def test_agent_reregistering_under_new_id_detaches_old_entry():
+    ws = object()
+    devices.register_agent("old-host", "old", ws)
+    devices.register_agent("new-host", "new", ws)
+    assert devices.get_agent_ws("old-host") is None
+    assert devices.get_agent_ws("new-host") is ws
+    ids = {d["device_id"] for d in devices.list_connected()}
+    assert ids == {"new-host"}
 
 def test_empty_device_id_is_rejected():
     ws = object()

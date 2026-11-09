@@ -28,6 +28,13 @@ _active_sessions: dict = {}
 # object rather than a {"type": ...} dict, so a client can't forge it.
 _DISCONNECT = object()
 
+_LOOPBACK_HOSTS = ("127.0.0.1", "::1")
+
+
+def _is_loopback(ws: WebSocket) -> bool:
+    """True if the peer address is loopback (a client on the hub machine itself)."""
+    return ws.client is not None and ws.client.host in _LOOPBACK_HOSTS
+
 
 async def _silence_monitor() -> None:
     """Monitor silence in active sessions and send check-ins or close."""
@@ -189,7 +196,9 @@ async def websocket_endpoint(ws: WebSocket) -> None:
                             {"type": "error", "text": "register_device needs a string device_id"}
                         )
                         continue
-                    devices.register_chat(device_id, device_name, ws)
+                    devices.register_chat(
+                        device_id, device_name, ws, is_local=_is_loopback(ws)
+                    )
                 elif msg_type == "confirm_response":
                     request_id = data.get("request_id")
                     if isinstance(request_id, str):
