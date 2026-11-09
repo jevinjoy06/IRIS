@@ -56,6 +56,20 @@ cp clients/laptop/config.json.template clients/laptop/config.json
 python clients/laptop/main.py
 ```
 
+### Background agent (optional)
+
+To let IRIS run commands on this device even when the chat window isn't open,
+start `python clients/laptop/agent.py` at login:
+
+1. Press `Win+R`, type `shell:startup`, press Enter.
+2. Create a shortcut in that folder targeting:
+   `pythonw.exe C:\path\to\IRIS\clients\laptop\agent.py`
+3. Log out and back in (or just run the script manually) to confirm it connects.
+
+The agent reuses `clients/laptop/config.json` (same `hub_url`/`device_name` as
+the chat client) and reconnects automatically if the hub is unreachable or the
+connection drops, so it's safe to leave running unattended.
+
 ---
 
 ## Repo Layout
