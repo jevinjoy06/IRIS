@@ -792,6 +792,123 @@ class TestRegistry:
         assert captured["target_device"] == "laptop-host"
         assert captured["origin_device_id"] == "desktop-host"
 
+    @pytest.mark.asyncio
+    async def test_execute_command_coerces_destructive_string_false(self, monkeypatch):
+        from hub.tools import registry
+        captured = {}
+
+        async def fake_execute_remote(command, destructive, target_device, origin_device_id, ws, timeout=30):
+            captured.update(locals())
+            return {"ok": True, "stdout": "ran", "stderr": "", "returncode": 0}
+
+        monkeypatch.setattr(registry, "execute_remote", fake_execute_remote)
+        await registry.async_dispatch(
+            "execute_command",
+            {"command": "echo hi", "destructive": "false", "target_device": "laptop-host"},
+            AsyncMock(),
+            origin_device_id="desktop-host",
+        )
+        assert captured["destructive"] is False
+
+    @pytest.mark.asyncio
+    async def test_execute_command_coerces_destructive_string_true(self, monkeypatch):
+        from hub.tools import registry
+        captured = {}
+
+        async def fake_execute_remote(command, destructive, target_device, origin_device_id, ws, timeout=30):
+            captured.update(locals())
+            return {"ok": True, "stdout": "ran", "stderr": "", "returncode": 0}
+
+        monkeypatch.setattr(registry, "execute_remote", fake_execute_remote)
+        await registry.async_dispatch(
+            "execute_command",
+            {"command": "rm -rf foo", "destructive": "true", "target_device": "laptop-host"},
+            AsyncMock(),
+            origin_device_id="desktop-host",
+        )
+        assert captured["destructive"] is True
+
+    @pytest.mark.asyncio
+    async def test_execute_command_destructive_real_bool_passes_through(self, monkeypatch):
+        from hub.tools import registry
+        captured = {}
+
+        async def fake_execute_remote(command, destructive, target_device, origin_device_id, ws, timeout=30):
+            captured.update(locals())
+            return {"ok": True, "stdout": "ran", "stderr": "", "returncode": 0}
+
+        monkeypatch.setattr(registry, "execute_remote", fake_execute_remote)
+        await registry.async_dispatch(
+            "execute_command",
+            {"command": "echo hi", "destructive": True, "target_device": "laptop-host"},
+            AsyncMock(),
+            origin_device_id="desktop-host",
+        )
+        assert captured["destructive"] is True
+
+        await registry.async_dispatch(
+            "execute_command",
+            {"command": "echo hi", "destructive": False, "target_device": "laptop-host"},
+            AsyncMock(),
+            origin_device_id="desktop-host",
+        )
+        assert captured["destructive"] is False
+
+    @pytest.mark.asyncio
+    async def test_execute_command_coerces_timeout_string(self, monkeypatch):
+        from hub.tools import registry
+        captured = {}
+
+        async def fake_execute_remote(command, destructive, target_device, origin_device_id, ws, timeout=30):
+            captured.update(locals())
+            return {"ok": True, "stdout": "ran", "stderr": "", "returncode": 0}
+
+        monkeypatch.setattr(registry, "execute_remote", fake_execute_remote)
+        await registry.async_dispatch(
+            "execute_command",
+            {"command": "echo hi", "destructive": False, "target_device": "laptop-host", "timeout": "15"},
+            AsyncMock(),
+            origin_device_id="desktop-host",
+        )
+        assert captured["timeout"] == 15
+        assert isinstance(captured["timeout"], int)
+
+    @pytest.mark.asyncio
+    async def test_execute_command_timeout_real_int_passes_through(self, monkeypatch):
+        from hub.tools import registry
+        captured = {}
+
+        async def fake_execute_remote(command, destructive, target_device, origin_device_id, ws, timeout=30):
+            captured.update(locals())
+            return {"ok": True, "stdout": "ran", "stderr": "", "returncode": 0}
+
+        monkeypatch.setattr(registry, "execute_remote", fake_execute_remote)
+        await registry.async_dispatch(
+            "execute_command",
+            {"command": "echo hi", "destructive": False, "target_device": "laptop-host", "timeout": 20},
+            AsyncMock(),
+            origin_device_id="desktop-host",
+        )
+        assert captured["timeout"] == 20
+
+    @pytest.mark.asyncio
+    async def test_execute_command_timeout_uncoercible_falls_back_to_default(self, monkeypatch):
+        from hub.tools import registry
+        captured = {}
+
+        async def fake_execute_remote(command, destructive, target_device, origin_device_id, ws, timeout=30):
+            captured.update(locals())
+            return {"ok": True, "stdout": "ran", "stderr": "", "returncode": 0}
+
+        monkeypatch.setattr(registry, "execute_remote", fake_execute_remote)
+        await registry.async_dispatch(
+            "execute_command",
+            {"command": "echo hi", "destructive": False, "target_device": "laptop-host", "timeout": "not-a-number"},
+            AsyncMock(),
+            origin_device_id="desktop-host",
+        )
+        assert captured["timeout"] == 30
+
     def test_shell_run_tool_definition_removed(self):
         from hub.tools.registry import TOOL_DEFINITIONS
         names = {t["function"]["name"] for t in TOOL_DEFINITIONS}

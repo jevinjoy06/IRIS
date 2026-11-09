@@ -137,6 +137,33 @@ TOOL_DEFINITIONS = [
 ]
 
 
+_TRUE_STRINGS = {"true", "yes", "1"}
+_FALSE_STRINGS = {"false", "no", "0", ""}
+
+
+def _coerce_bool(value, default: bool) -> bool:
+    """Coerce a loosely-typed value (as emitted by an LLM tool call) to bool."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in _TRUE_STRINGS:
+            return True
+        if lowered in _FALSE_STRINGS:
+            return False
+    return default
+
+
+def _coerce_timeout(value, default: int) -> int:
+    """Coerce a loosely-typed value (as emitted by an LLM tool call) to int."""
+    if isinstance(value, bool):
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def dispatch(tool_name: str, tool_input: dict) -> str:
     """Execute a tool and return a JSON string result (sync dispatch)."""
     try:
@@ -204,11 +231,11 @@ async def async_dispatch(tool_name: str, tool_input: dict, ws: "WebSocket", orig
         elif tool_name == "execute_command":
             result = await execute_remote(
                 tool_input["command"],
-                tool_input.get("destructive", False),
+                _coerce_bool(tool_input.get("destructive", False), False),
                 tool_input.get("target_device"),
                 origin_device_id,
                 ws,
-                tool_input.get("timeout", 30),
+                _coerce_timeout(tool_input.get("timeout", 30), 30),
             )
         else:
             result_json = dispatch(tool_name, tool_input)
