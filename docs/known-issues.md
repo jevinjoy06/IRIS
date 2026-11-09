@@ -4,10 +4,6 @@ Tracked during the Oct 2026 conversational testing pass. Not yet fixed — come 
 
 ## Behavioral issues (found, not fixed)
 
-1. **Destructive-request suggestion nudge** — asked to delete everything in Documents,
-   IRIS correctly declines (no delete tool exists) but then adds "you'll need to do
-   that manually or use a shell command to remove the contents." It shouldn't nudge
-   toward a destructive workaround after declining.
 2. **Empty-string input → total silence** — client sends `{"type":"message","text":""}`
    and gets back nothing: no token, no error, no done. `server.py` skips the whole
    processing block when `text` strips to empty. Probably intentional (VAD false
@@ -15,6 +11,25 @@ Tracked during the Oct 2026 conversational testing pass. Not yet fixed — come 
 3. **Cold-start latency spike** — first message on a fresh connection took 7.7s to
    first token vs. ~0.5s on the second message in the same session. Suspected Ollama
    reloading the model into VRAM after idling out. Not confirmed or addressed.
+12. **`execute_command` tool arguments aren't type-checked before use** — found
+    during Task 12's live end-to-end pass (real hub + real Ollama/`llama3.1:8b`,
+    no mocks). The model sometimes emits `destructive` and `timeout` as JSON
+    *strings* (`"false"`, `"30"`) instead of native bool/int in its tool-call
+    arguments. Two concrete effects observed live: (1) `execute_remote`'s
+    `destructive or shell.is_destructive_pattern(command)` check treats the
+    string `"false"` as truthy — `bool("false")` is `True` in Python — so a
+    stringified `destructive` forces the confirmation gate on even when the
+    model intended "not destructive" (fails safe, not a security problem, but
+    means "runs immediately with no prompt" is less reliable in practice than
+    the code path alone suggests). (2) a stringified `timeout` reaching
+    `shell.py`'s `timeout = min(timeout, 30)` raises
+    `TypeError: '<' not supported between instances of 'int' and 'str'`,
+    caught by `async_dispatch`'s try/except and surfaced as a normal tool
+    error (no crash, no hang, no fabricated success — IRIS correctly reported
+    "the command failed") but it's a real, reproducible defect in argument
+    handling, not an LLM-content-accuracy issue. Neither `execute_remote` nor
+    `registry.async_dispatch` currently coerces/validates tool_input types
+    before use.
 
 ## Known limitations (documented, deliberately deprioritized)
 
@@ -25,9 +40,6 @@ Tracked during the Oct 2026 conversational testing pass. Not yet fixed — come 
 5. Extreme-length input (50k+ chars) can still trigger language-switching even with
    `num_ctx=8192`. Judged unrealistic for real voice input (would need ~1hr+ of
    continuous speech), so not chased further.
-6. `hub/tools/shell.py`'s dangerous-command blocklist is regex/pattern-based and
-   bypassable (e.g. PowerShell `Remove-Item -Recurse -Force` isn't caught). Flagged
-   as a security observation, not exploited, not fixed.
 7. `/ws` has zero authentication and no Origin check (confirmed via grep — no
    auth/token/secret handling anywhere in `server.py`). Anyone who can reach the hub
    could connect and use `shell_run`/file tools with no credential. Worth at minimum
@@ -50,9 +62,50 @@ Tracked during the Oct 2026 conversational testing pass. Not yet fixed — come 
     (e.g. desktop + laptop simultaneously). Desktop-to-laptop reachability over
     Tailscale is now wired up (see below); concurrent-session behavior on the hub
     itself still untested.
+13. **Real-hardware cross-device execution end-to-end — not performed.** Task 12
+    (end-to-end verification) ran in an isolated git worktree with no second
+    physical machine, no Tailscale network, and no way to drive the Electron GUI
+    interactively, so it substituted a real hub process + a real
+    `clients/laptop/agent.py` process talking over `localhost` (device identity for
+    the agent side was simulated by monkeypatching `socket.gethostname()` in a
+    throwaway harness, since the real agent.py always derives its device_id from
+    the machine's own hostname, which collides with the hub's own hostname on a
+    single test box). That localhost pass did confirm the real wiring: hub ↔ real
+    agent.py round trip over a genuine TCP socket, `confirm_required`/
+    `confirm_response` handshake, and a clean "not connected" error with no hang
+    when the target agent was stopped. What it did NOT and cannot cover from this
+    environment: (a) an actual second physical device reachable only over the
+    Tailscale tailnet (desktop `100.98.135.70` ↔ laptop `100.74.253.30`) rather
+    than loopback — real network latency, NAT/firewall behavior, and Tailscale's
+    own connection semantics are unexercised; (b) the real Electron GUI on either
+    end — `clients/laptop/electron`/`clients/desktop/electron` were never
+    launched, so the actual confirmation-prompt UI rendering, click-to-approve/
+    decline flow, and device-identity display have not been clicked through by a
+    human; (c) `clients/laptop/agent.py` running as its own standalone process on
+    the actual laptop hardware with its own real hostname (no monkeypatch) and
+    its own real `config.json` pointed at the desktop's Tailscale IP. Someone with
+    both physical machines on the tailnet still needs to run through plan Task
+    12's original steps 2-5 for real before this feature is considered verified
+    on real hardware.
 
 ## Resolved since this file was written
 
+- **Destructive-request suggestion nudge (item 1)** — superseded by the
+  cross-device execution work: `execute_command`'s confirmation gate
+  (`hub/tools/remote_exec.py::execute_remote`, the `confirm_required` /
+  `confirm_response` handshake) now intercepts anything destructive before it
+  runs, so there's no longer a bare decline for IRIS to nudge away from — any
+  actually-destructive path goes through an explicit approve/decline step
+  instead.
+- **Bypassable shell blocklist (item 6)** — `hub/tools/shell.py`'s
+  regex blocklist is still just a heuristic (`is_destructive_pattern`) and is
+  still bypassable on its own, but it's no longer the only gate: `execute_command`
+  requires the caller (the model) to declare `destructive`, and
+  `execute_remote` ORs that declaration with the heuristic, so either one
+  routes the command through the same human-confirmation gate before
+  anything runs. The regex itself wasn't tightened — the replacement
+  mechanism is the confirmation step sitting in front of it, not a better
+  blocklist.
 - **Hub bound to `0.0.0.0` by default (item 7 network exposure)** — `hub/__main__.py`
   now defaults `HUB_HOST` to `127.0.0.1`, so the hub is no longer reachable from the
   LAN or other networks unless `HUB_HOST` is set explicitly (e.g. to the machine's
