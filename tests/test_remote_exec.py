@@ -103,14 +103,58 @@ async def test_agent_device_with_no_agent_ws_errors():
     assert result["ok"] is False
 
 @pytest.mark.asyncio
-async def test_agent_timeout_returns_error():
-    # timeout=-10 makes the wait_for(timeout + 10) bound effectively 0, so this
-    # exercises the real timeout branch without a real wait.
+async def test_agent_timeout_returns_error(monkeypatch):
+    # `timeout` is now clamped to >=1 in execute_remote (Fix 3a), so a
+    # negative input no longer makes the wait_for bound effectively 0.
+    # Shrink the dispatch buffer instead so this still exercises the real
+    # timeout branch without a real multi-second wait.
+    monkeypatch.setattr(remote_exec, "AGENT_DISPATCH_BUFFER_SECONDS", 0.1)
     agent_ws = AsyncMock()
     devices.register_agent("laptop-host", "laptop", agent_ws)
     result = await remote_exec.execute_remote("echo hi", False, "laptop-host", None, AsyncMock(), timeout=-10)
     assert result["ok"] is False
     assert "did not respond in time" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_agent_dispatch_timeout_is_clamped_to_30():
+    """An oversized timeout must not reach the agent uncapped — it's clamped
+    to the same 30s cap already enforced by shell.execute() and the laptop
+    client's agent handler."""
+    agent_ws = AsyncMock()
+
+    async def reply_with_result(*args, **kwargs):
+        request_id = agent_ws.send_json.call_args[0][0]["request_id"]
+        remote_exec.resolve_exec_result(
+            request_id, agent_ws, {"ok": True, "stdout": "ok", "stderr": "", "returncode": 0}
+        )
+
+    agent_ws.send_json.side_effect = reply_with_result
+    devices.register_agent("laptop-host", "laptop", agent_ws)
+
+    await remote_exec.execute_remote("echo hi", False, "laptop-host", None, AsyncMock(), timeout=9999)
+    sent = agent_ws.send_json.call_args[0][0]
+    assert sent["timeout"] == 30
+
+
+@pytest.mark.asyncio
+async def test_agent_dispatch_timeout_is_clamped_to_minimum_1():
+    """A non-positive timeout must not collapse the dispatched timeout to
+    zero or negative — it's clamped up to a minimum of 1s."""
+    agent_ws = AsyncMock()
+
+    async def reply_with_result(*args, **kwargs):
+        request_id = agent_ws.send_json.call_args[0][0]["request_id"]
+        remote_exec.resolve_exec_result(
+            request_id, agent_ws, {"ok": True, "stdout": "ok", "stderr": "", "returncode": 0}
+        )
+
+    agent_ws.send_json.side_effect = reply_with_result
+    devices.register_agent("laptop-host", "laptop", agent_ws)
+
+    await remote_exec.execute_remote("echo hi", False, "laptop-host", None, AsyncMock(), timeout=-50)
+    sent = agent_ws.send_json.call_args[0][0]
+    assert sent["timeout"] == 1
 
 @pytest.mark.asyncio
 async def test_resolve_exec_result_rejects_wrong_responding_ws():
@@ -148,6 +192,58 @@ async def test_confirmation_send_json_raising_returns_clean_error_and_cleans_up(
     assert "error" in result
     from hub import pending_confirmations
     assert pending_confirmations._pending == {}
+
+@pytest.mark.asyncio
+async def test_fail_pending_for_ws_resolves_immediately_without_full_timeout():
+    """A pending exec future for a disconnected agent must be failed right
+    away by fail_pending_for_ws, not left to wait out the full timeout."""
+    agent_ws = AsyncMock()
+    devices.register_agent("laptop-host", "laptop", agent_ws)
+
+    # Dispatch, but never reply — simulate the agent vanishing mid-flight by
+    # calling fail_pending_for_ws for its ws shortly after dispatch.
+    async def disconnect_after_send(*args, **kwargs):
+        request_id = agent_ws.send_json.call_args[0][0]["request_id"]
+        assert request_id in remote_exec._pending_exec
+        remote_exec.fail_pending_for_ws(agent_ws)
+
+    agent_ws.send_json.side_effect = disconnect_after_send
+
+    result = await asyncio.wait_for(
+        remote_exec.execute_remote("echo hi", False, "laptop-host", None, AsyncMock(), timeout=25),
+        timeout=2,  # proves it resolved immediately, not after the ~35s real wait
+    )
+    assert result["ok"] is False
+    assert "agent disconnected" in result["error"]
+    assert remote_exec._pending_exec == {}
+
+
+@pytest.mark.asyncio
+async def test_fail_pending_for_ws_leaves_other_agents_pending_future_untouched():
+    """fail_pending_for_ws must only touch entries whose stored agent_ws is
+    the exact ws passed in — a different agent's pending future is
+    unaffected."""
+    future_a = asyncio.get_event_loop().create_future()
+    future_b = asyncio.get_event_loop().create_future()
+    ws_a, ws_b = object(), object()
+    remote_exec._pending_exec["req-a"] = (future_a, ws_a)
+    remote_exec._pending_exec["req-b"] = (future_b, ws_b)
+
+    try:
+        remote_exec.fail_pending_for_ws(ws_a)
+
+        assert future_a.done()
+        assert future_a.result() == {"ok": False, "error": "agent disconnected before replying"}
+        assert "req-a" not in remote_exec._pending_exec
+
+        assert not future_b.done()
+        assert "req-b" in remote_exec._pending_exec
+    finally:
+        remote_exec._pending_exec.pop("req-a", None)
+        remote_exec._pending_exec.pop("req-b", None)
+        if not future_b.done():
+            future_b.cancel()
+
 
 @pytest.mark.asyncio
 async def test_agent_dispatch_send_json_raising_returns_clean_error_and_cleans_up():

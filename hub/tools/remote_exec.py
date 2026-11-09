@@ -33,6 +33,12 @@ from hub.tools import shell
 
 CONFIRMATION_TIMEOUT_SECONDS = 90
 
+# Extra margin added on top of `timeout` when waiting for a remote agent's
+# reply, to cover network/serialization overhead beyond the command's own
+# execution time. A module-level constant (rather than a bare "+ 10") so
+# tests can shrink it instead of waiting out a real multi-second timeout.
+AGENT_DISPATCH_BUFFER_SECONDS = 10
+
 _pending_exec: dict[str, tuple[asyncio.Future, object]] = {}
 
 
@@ -50,6 +56,14 @@ async def execute_remote(
     ``"ok"`` key, plus ``"error"`` on failure or ``"stdout"``/``"stderr"``/
     ``"returncode"`` on success.
     """
+    # `timeout` already passed through registry.py's _coerce_timeout, so it's
+    # guaranteed to be a real int, but not guaranteed to be in any sane range
+    # (could be negative, zero, or huge). Clamp it so the hub-side wait
+    # (asyncio.wait_for(..., timeout=timeout + 10) below) and the actual
+    # execution duration (capped independently at 30s by shell.py's
+    # execute() and by the laptop-client agent's own handler) agree.
+    timeout = max(1, min(timeout, 30))
+
     target = target_device or origin_device_id
     if target is None:
         return {"ok": False, "error": "no target device specified and no origin device known"}
@@ -101,7 +115,7 @@ async def execute_remote(
                 "timeout": timeout,
             }
         )
-        result = await asyncio.wait_for(future, timeout=timeout + 10)
+        result = await asyncio.wait_for(future, timeout=timeout + AGENT_DISPATCH_BUFFER_SECONDS)
     except asyncio.TimeoutError:
         return {"ok": False, "error": "device did not respond in time"}
     except Exception as exc:
@@ -110,6 +124,22 @@ async def execute_remote(
         _pending_exec.pop(request_id, None)
 
     return result
+
+
+def fail_pending_for_ws(ws) -> None:
+    """Fail every pending exec request dispatched to ``ws`` immediately.
+
+    Called when an agent's WebSocket disconnects: any command still waiting
+    for a reply on that exact connection can never get one, so there is no
+    reason to make the hub wait out the full timeout for it. Resolves each
+    matching future (identity comparison on the stored agent ws) with an
+    error result instead, unless it is already done.
+    """
+    for request_id, (future, agent_ws) in list(_pending_exec.items()):
+        if agent_ws is ws:
+            _pending_exec.pop(request_id, None)
+            if not future.done():
+                future.set_result({"ok": False, "error": "agent disconnected before replying"})
 
 
 def resolve_exec_result(request_id: str, responding_ws, result: dict) -> bool:
