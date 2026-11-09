@@ -14,7 +14,7 @@ load_dotenv(Path(__file__).parent / ".env", override=True)
 if TYPE_CHECKING:
     from fastapi import WebSocket
 
-from hub import memory, tts
+from hub import devices, memory, tts
 from hub.tools.registry import TOOL_DEFINITIONS, async_dispatch
 
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434/v1")
@@ -26,7 +26,7 @@ SYSTEM_PROMPT = """You are IRIS, Jevin's personal AI assistant running on his GP
 Only call a tool when you need data you cannot produce yourself:
 - file_read / file_write / file_list — boss asks about files on his machine
 - web_search — boss asks about current events or something to look up online
-- shell_run — boss asks you to run a command or script
+- execute_command — boss asks you to run a command/script on a device, or to open/launch/control something no structured tool covers; ALWAYS set destructive=true for anything that deletes, overwrites, kills, or formats
 - clipboard_read / clipboard_write — boss asks about his clipboard
 - system_info — boss asks about his PC hardware or status
 - notify — boss asks you to send a desktop notification
@@ -84,7 +84,7 @@ _KEYWORD_TO_TOOL = {
     "search": "web_search", "find": "web_search", "look up": "web_search",
     "news": "web_search", "weather": "web_search",
     "folder": "file_list",
-    "run": "shell_run", "execute": "shell_run", "command": "shell_run",
+    "run": "execute_command", "execute": "execute_command", "command": "execute_command",
     "remember": "memory_write", "save": "memory_write",
     "notify": "notify", "notification": "notify",
     "timer": "timer_set", "alarm": "timer_set",
@@ -153,11 +153,35 @@ def _get_client():
     return _client
 
 
+def _device_context() -> str:
+    """Format the list of connected devices for injection into the system prompt.
+
+    Returns an empty string if no devices are connected (shouldn't happen once
+    the hub self-registers, but kept defensive).
+    """
+    connected = devices.list_connected()
+    if not connected:
+        return ""
+    lines = ["## Connected devices"]
+    for d in connected:
+        device_id = d["device_id"]
+        name = d.get("device_name") or device_id
+        suffix = ", this machine" if devices.is_hub_device(device_id) else ""
+        capability = "can execute commands" if d.get("can_execute") else "cannot execute commands"
+        lines.append(f'- {device_id} ("{name}"{suffix}) — {capability}')
+    lines.append(
+        "Use the exact device_id as target_device for execute_command. "
+        "Omit target_device to use the device this request came from."
+    )
+    return "\n".join(lines)
+
+
 async def process_turn(
     user_text: str,
     ws: "WebSocket",
     session_id: str | None = None,
     turn_number: int = 1,
+    origin_device_id: str | None = None,
 ) -> bool:
     """Process a turn. Returns True if session was closed this turn."""
     client = _get_client()
@@ -192,7 +216,7 @@ async def process_turn(
         forced_name = forced["function"]["name"]
         if forced_name in _DETERMINISTIC_TOOLS:
             await ws.send_json({"type": "tool_use", "tool": forced_name})
-            result = await async_dispatch(forced_name, {}, ws)
+            result = await async_dispatch(forced_name, {}, ws, origin_device_id=origin_device_id)
             memory.save_turn(session_id, "tool", result, tool_name=forced_name)
             tools_used_this_turn.add(forced_name)
             call_id = f"deterministic_{forced_name}"
@@ -238,10 +262,15 @@ async def process_turn(
                 + "\nIf this seems related to what boss just said, ask casually in one line if he wants to pick that up. If it's clearly something new, just respond normally."
             )
 
+    device_context = _device_context()
+
     # Build message history (user/assistant roles only)
     recent_turns = memory.get_session_turns(session_id, limit=20)
     messages: list[dict] = [
-        {"role": "system", "content": SYSTEM_PROMPT + ("\n\n" + mem_context if mem_context else "") + resume_note},
+        {"role": "system", "content": SYSTEM_PROMPT
+            + ("\n\n" + mem_context if mem_context else "")
+            + ("\n\n" + device_context if device_context else "")
+            + resume_note},
     ]
 
     # Add historical turns (skip tool turns and the current user turn already saved)
@@ -343,7 +372,7 @@ async def process_turn(
                     args = json.loads(tc["arguments"])
                 except json.JSONDecodeError:
                     args = {}
-                result = await async_dispatch(tc["name"], args, ws)
+                result = await async_dispatch(tc["name"], args, ws, origin_device_id=origin_device_id)
                 # Save tool call result
                 memory.save_turn(session_id, "tool", result, tool_name=tc["name"])
 
@@ -521,7 +550,7 @@ _DETERMINISTIC_TOOLS = {
 
 
 _TRANSIENT_TOOLS = {
-    "system_info", "shell_run", "file_list", "file_read", "window_list",
+    "system_info", "execute_command", "file_list", "file_read", "window_list",
     "clipboard_read", "web_search",
 }
 
