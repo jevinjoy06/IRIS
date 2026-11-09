@@ -1,6 +1,13 @@
-import asyncio
 import pytest
 from hub import pending_confirmations as pc
+
+@pytest.mark.asyncio
+async def test_duplicate_create_raises_and_keeps_first_waiter():
+    first = pc.create("req-dup")
+    with pytest.raises(ValueError):
+        pc.create("req-dup")
+    assert pc.resolve("req-dup", True) is True
+    assert await first is True
 
 @pytest.mark.asyncio
 async def test_create_then_resolve_sets_future_result():

@@ -12,7 +12,13 @@ _pending: dict[str, asyncio.Future] = {}
 
 
 def create(request_id: str) -> asyncio.Future:
-    """Create and register a future for ``request_id``. Must run inside an event loop."""
+    """Create and register a future for ``request_id``. Must run inside an event loop.
+
+    Raises ValueError if ``request_id`` is already pending, so an existing
+    waiter is never silently orphaned.
+    """
+    if request_id in _pending:
+        raise ValueError(f"request_id {request_id!r} already pending")
     future = asyncio.get_running_loop().create_future()
     _pending[request_id] = future
     return future
