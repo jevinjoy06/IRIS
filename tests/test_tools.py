@@ -45,6 +45,18 @@ class TestShell:
         from hub.tools import shell
         assert shell.is_destructive_pattern("del /f /s /q C:") is True
 
+    def test_is_destructive_pattern_mkfs(self):
+        from hub.tools import shell
+        assert shell.is_destructive_pattern("mkfs /dev/sda1") is True
+
+    def test_is_destructive_pattern_dd_if(self):
+        from hub.tools import shell
+        assert shell.is_destructive_pattern("dd if=/dev/zero of=/dev/sda") is True
+
+    def test_is_destructive_pattern_shred(self):
+        from hub.tools import shell
+        assert shell.is_destructive_pattern("shred -u /important/file") is True
+
     def test_is_destructive_pattern_safe_command(self):
         from hub.tools import shell
         assert shell.is_destructive_pattern("echo hello") is False
