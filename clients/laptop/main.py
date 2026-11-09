@@ -2,6 +2,7 @@
 import argparse
 import asyncio
 import json
+import socket
 import sys
 import time
 from pathlib import Path
@@ -40,6 +41,11 @@ async def run_text(config: dict) -> None:
     print(f"IRIS Desktop connecting to {hub_url}")
 
     async with websockets.connect(hub_url) as ws:
+        await ws.send(json.dumps({
+            "type": "register_device",
+            "device_id": socket.gethostname(),
+            "device_name": config.get("device_name"),
+        }))
         print("Connected. Type a message (Ctrl+C to quit):")
         while True:
             text = await asyncio.get_event_loop().run_in_executor(None, input, "> ")
