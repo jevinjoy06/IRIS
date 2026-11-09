@@ -52,12 +52,23 @@ class DeviceEntry:
 _devices: dict[str, DeviceEntry] = {}
 
 
-def _get_or_create(device_id: str, device_name: str | None) -> DeviceEntry:
+def _get_or_create(
+    device_id: str, device_name: str | None, *, protect_hub_identity: bool = True
+) -> DeviceEntry:
+    """Fetch or create the entry for ``device_id``, updating its name.
+
+    ``protect_hub_identity`` (default True) refuses to overwrite the name of
+    an entry that is already the hub's own (``entry.is_hub``) — a chat or
+    agent connection claiming the hub's device_id (e.g. a laptop-client
+    chat session run on the hub machine itself) must not silently rename
+    the hub's shared registry entry. ``register_hub_self`` passes False so
+    it can still set/update the hub's own configured name.
+    """
     entry = _devices.get(device_id)
     if entry is None:
         entry = DeviceEntry(device_id=device_id, device_name=device_name)
         _devices[device_id] = entry
-    elif device_name is not None:
+    elif device_name is not None and not (protect_hub_identity and entry.is_hub):
         entry.device_name = device_name
     return entry
 
@@ -74,7 +85,7 @@ def register_hub_self() -> str:
     """
     device_id = socket.gethostname()
     device_name = os.environ.get("HUB_DEVICE_NAME", "hub")
-    entry = _get_or_create(device_id, device_name)
+    entry = _get_or_create(device_id, device_name, protect_hub_identity=False)
     entry.is_hub = True
     return device_id
 

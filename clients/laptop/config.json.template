@@ -1,5 +1,5 @@
 {
-  "_comment": "Copy to config.json — gitignored. Defaults to localhost for running on the same machine as the hub. For a remote device, set hub_url to the hub machine's Tailscale IP (e.g. ws://100.98.135.70:7865/ws) or LAN IP. device_name is an optional friendly label other devices can target you by (e.g. \"laptop\") — defaults to this machine's hostname if left out.",
+  "_comment": "Copy to config.json — gitignored. Defaults to localhost for running on the same machine as the hub. For a remote device, set hub_url to the hub machine's Tailscale IP (e.g. ws://100.98.135.70:7865/ws) or LAN IP. device_name is an OPTIONAL friendly label other devices can target you by (e.g. \"laptop\") — leave it null to default to this machine's hostname. IMPORTANT: this client can run on ANY device, including the hub machine itself — do not hardcode a name like \"laptop\" here, since on the hub machine that would rename the hub's own device registry entry (hostname-matched) instead of registering a separate device.",
   "hub_url": "ws://localhost:7865/ws",
-  "device_name": "laptop"
+  "device_name": null
 }

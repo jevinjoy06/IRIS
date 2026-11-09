@@ -88,6 +88,21 @@ def test_local_chat_on_hub_machine_is_recognized_as_hub():
     assert devices.get_device_id_for_chat_ws(ws) is None
     assert devices.is_connected(hub_id) is True  # the hub itself stays live
 
+def test_local_chat_claiming_hub_id_does_not_rename_hub():
+    # A laptop-client chat session run on the hub machine itself (local,
+    # matching the existing allowed case) must not rename the hub's own
+    # shared registry entry even if its own device_name differs.
+    hub_id = devices.register_hub_self()
+    entries = {d["device_id"]: d for d in devices.list_connected()}
+    original_name = entries[hub_id]["device_name"]
+
+    ws = object()
+    devices.register_chat(hub_id, "laptop", ws, is_local=True)
+
+    entries = {d["device_id"]: d for d in devices.list_connected()}
+    assert entries[hub_id]["device_name"] == original_name
+
+
 def test_remote_chat_cannot_claim_hub_device_id():
     hub_id = devices.register_hub_self()
     omitted, explicit = object(), object()
