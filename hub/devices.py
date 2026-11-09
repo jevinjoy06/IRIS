@@ -11,12 +11,30 @@ This module holds no persistent state; entries vanish when the process exits.
 from __future__ import annotations
 
 import os
+import re
 import socket
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from fastapi import WebSocket
+
+
+# Self-reported identity strings are rendered into the LLM system prompt, so
+# only a conservative charset and length are accepted. Anything else is
+# rejected outright (the registration is a no-op), never sanitized or truncated.
+_SAFE_IDENTITY = re.compile(r"[A-Za-z0-9._ -]{1,64}")
+
+
+def _is_safe_identity(value: str) -> bool:
+    # fullmatch, not match/$: "$" would accept a trailing newline.
+    return _SAFE_IDENTITY.fullmatch(value) is not None
+
+
+def _is_valid_registration(device_id: str, device_name: str | None) -> bool:
+    if not device_id or not _is_safe_identity(device_id):
+        return False
+    return device_name is None or _is_safe_identity(device_name)
 
 
 @dataclass
@@ -77,11 +95,12 @@ def register_chat(
 ) -> None:
     """Attach chat connection ``ws`` to ``device_id``.
 
-    Ignored for an empty ``device_id``, and for a claim of the hub's own
+    Ignored for an empty ``device_id``, for a ``device_id``/``device_name``
+    outside the safe identity charset, and for a claim of the hub's own
     device_id from a non-local connection. A socket re-registering under a
     new id is detached from its previous entry first.
     """
-    if not device_id:
+    if not _is_valid_registration(device_id, device_name):
         return
     if _is_hub_id(device_id) and not is_local:
         return
@@ -98,11 +117,12 @@ def unregister_chat(ws: Any) -> None:
 def register_agent(device_id: str, device_name: str | None, ws: Any) -> None:
     """Attach agent connection ``ws`` to ``device_id``.
 
-    Ignored for an empty ``device_id`` and, unconditionally, for the hub's
+    Ignored for an empty ``device_id``, for a ``device_id``/``device_name``
+    outside the safe identity charset, and, unconditionally, for the hub's
     own device_id. A socket re-registering under a new id is detached from
     its previous entry first.
     """
-    if not device_id or _is_hub_id(device_id):
+    if not _is_valid_registration(device_id, device_name) or _is_hub_id(device_id):
         return
     unregister_agent(ws)
     _get_or_create(device_id, device_name).agent_ws = ws

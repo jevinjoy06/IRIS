@@ -130,3 +130,59 @@ def test_empty_device_id_is_rejected():
     assert devices.get_device_id_for_chat_ws(ws) is None
     assert devices.get_agent_ws("") is None
     assert devices.list_connected() == []
+
+@pytest.mark.parametrize(
+    "bad_id",
+    [
+        'bad"id',
+        "bad\\id",
+        "bad\nid",
+        '"); DROP TABLE',
+        "x" * 65,
+        "bad/id",
+        "bad\x00id",
+    ],
+)
+def test_unsafe_device_id_is_rejected(bad_id):
+    chat_ws, agent_ws = object(), object()
+    devices.register_chat(bad_id, "laptop", chat_ws)
+    devices.register_agent(bad_id, "laptop", agent_ws)
+    assert devices.get_device_id_for_chat_ws(chat_ws) is None
+    assert devices.get_agent_ws(bad_id) is None
+    assert devices.list_connected() == []
+
+@pytest.mark.parametrize(
+    "bad_name",
+    [
+        'bad"name',
+        "bad\\name",
+        "bad\nname",
+        '"); DROP TABLE',
+        "x" * 65,
+        "bad:name",
+        "bad\x00name",
+    ],
+)
+def test_unsafe_device_name_rejects_whole_registration(bad_name):
+    # A valid device_id paired with an unsafe name must not register at all:
+    # no sanitized/truncated name, no partial entry.
+    chat_ws, agent_ws = object(), object()
+    devices.register_chat("laptop-host", bad_name, chat_ws)
+    devices.register_agent("laptop-host", bad_name, agent_ws)
+    assert devices.get_device_id_for_chat_ws(chat_ws) is None
+    assert devices.get_agent_ws("laptop-host") is None
+    assert devices.list_connected() == []
+
+def test_safe_charset_device_id_and_name_are_accepted():
+    ws = object()
+    devices.register_agent("My Laptop_1.local-2", "Desk PC.v2_x", ws)
+    assert devices.get_agent_ws("My Laptop_1.local-2") is ws
+    entries = {d["device_id"]: d for d in devices.list_connected()}
+    assert entries["My Laptop_1.local-2"]["device_name"] == "Desk PC.v2_x"
+
+def test_boundary_length_64_is_accepted_and_65_rejected():
+    ok_id = "a" * 64
+    devices.register_agent(ok_id, None, object())
+    assert devices.is_connected(ok_id) is True
+    devices.register_agent("b" * 65, None, object())
+    assert devices.is_connected("b" * 65) is False
