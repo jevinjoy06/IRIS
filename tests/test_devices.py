@@ -72,29 +72,21 @@ def test_different_ws_same_device_last_registration_wins():
     assert devices.get_device_id_for_chat_ws(first) is None
     assert devices.get_device_id_for_chat_ws(second) == "laptop-host"
 
-def test_external_chat_cannot_claim_hub_device_id():
+def test_local_chat_on_hub_machine_is_recognized_as_hub():
+    # A client run on the hub machine reports the hub's hostname; it must be
+    # recognized so commands default to running on the hub.
     hub_id = devices.register_hub_self()
     ws = object()
     devices.register_chat(hub_id, "hub", ws)
-    assert devices.get_device_id_for_chat_ws(ws) is None
-    assert devices.get_agent_ws(hub_id) is None
-
-def test_external_agent_cannot_claim_hub_device_id():
-    hub_id = devices.register_hub_self()
-    ws = object()
-    devices.register_agent(hub_id, "hub", ws)
-    assert devices.get_agent_ws(hub_id) is None
+    assert devices.get_device_id_for_chat_ws(ws) == hub_id
+    assert devices.is_hub_device(hub_id) is True
     entries = {d["device_id"]: d for d in devices.list_connected()}
-    assert entries[hub_id]["can_execute"] is True  # still just the hub itself
+    assert len(entries) == 1
+    assert entries[hub_id]["can_execute"] is True
 
-def test_hub_registration_evicts_earlier_external_claim_on_same_hostname():
-    import socket
-    hostname = socket.gethostname()
-    ws = object()
-    devices.register_chat(hostname, "laptop", ws)
-    devices.register_hub_self()
+    devices.unregister_chat(ws)
     assert devices.get_device_id_for_chat_ws(ws) is None
-    assert devices.is_hub_device(hostname) is True
+    assert devices.is_connected(hub_id) is True  # the hub itself stays live
 
 def test_empty_device_id_is_rejected():
     ws = object()

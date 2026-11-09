@@ -47,14 +47,15 @@ def _get_or_create(device_id: str, device_name: str | None) -> DeviceEntry:
 def register_hub_self() -> str:
     """Register the hub's own machine as an always-connected device.
 
-    The hub's device_id is reserved: any external connection that previously
-    claimed the same hostname is dropped, so it cannot inherit hub capability.
+    Chat/agent connections may attach to the hub's device_id: a client run
+    locally on the hub machine reports the same hostname, and must be
+    recognized as the hub's own chat session so default targeting works.
+    Commands aimed at the hub always run in-process (``is_hub_device``),
+    whatever connections are attached to the entry.
     """
     device_id = socket.gethostname()
     device_name = os.environ.get("HUB_DEVICE_NAME", "hub")
     entry = _get_or_create(device_id, device_name)
-    entry.chat_ws = None
-    entry.agent_ws = None
     entry.is_hub = True
     return device_id
 
@@ -66,15 +67,8 @@ def get_hub_device_id() -> str | None:
     return None
 
 
-def _is_external_device_id(device_id: str | None) -> bool:
-    """False for empty ids and for the reserved hub id; True otherwise."""
-    if not device_id:
-        return False
-    return device_id != get_hub_device_id()
-
-
 def register_chat(device_id: str, device_name: str | None, ws: Any) -> None:
-    if not _is_external_device_id(device_id):
+    if not device_id:
         return
     _get_or_create(device_id, device_name).chat_ws = ws
 
@@ -86,7 +80,7 @@ def unregister_chat(ws: Any) -> None:
 
 
 def register_agent(device_id: str, device_name: str | None, ws: Any) -> None:
-    if not _is_external_device_id(device_id):
+    if not device_id:
         return
     _get_or_create(device_id, device_name).agent_ws = ws
 
