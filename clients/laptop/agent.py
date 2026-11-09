@@ -73,6 +73,10 @@ async def handle_message(ws, raw: str) -> None:
     timeout = msg.get("timeout", 30)
     if not isinstance(timeout, (int, float)) or isinstance(timeout, bool) or timeout <= 0:
         timeout = 30
+    # Match the hub's own cap (hub/tools/shell.py:execute) so a large or
+    # buggy timeout value can't block this agent's single-task event loop
+    # for longer than the rest of the codebase ever allows a command to run.
+    timeout = min(timeout, 30)
 
     print(f"Executing (request_id={request_id}): {command!r}")
     result = run_command(command, timeout)
