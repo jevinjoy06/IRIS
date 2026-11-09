@@ -10,6 +10,28 @@ DANGEROUS_PATTERNS = [
     r'mkfs',
     r'dd\s+if=',
     r'shred\s+',
+    # PowerShell Remove-Item with recursive and/or force flags, in either
+    # order (e.g. "Remove-Item -Recurse -Force").
+    r'remove-item(?=.*-recurse)(?=.*-force)',
+    # Bare del/erase of anything, beyond the narrow /f /s /q C: pattern above.
+    r'\b(del|erase)\s+',
+    # Recursive directory removal (rd/rmdir /s).
+    r'\b(rd|rmdir)\b.*/s',
+    # rm with -r and -f combined into a single flag cluster, in either order
+    # (e.g. "rm -fr", not just the exact "-rf" substring above).
+    r'rm\s+-[rfvid]*r[rfvid]*f[rfvid]*\b|rm\s+-[rfvid]*f[rfvid]*r[rfvid]*\b',
+    # rm with -r and -f as separate flags, in either order (e.g. "rm -f -r").
+    r'rm\s+-[rfvid]*r[rfvid]*\s+-[rfvid]*f[rfvid]*\b|rm\s+-[rfvid]*f[rfvid]*\s+-[rfvid]*r[rfvid]*\b',
+    # Process termination.
+    r'taskkill',
+    r'stop-process',
+    # Registry deletion.
+    r'reg\s+delete',
+    # Disk partitioning.
+    r'diskpart',
+    # Truncating output redirect: a single ">" (overwrites the target file),
+    # but not ">>" (appends) and not "N>&M" (fd duplication, e.g. "2>&1").
+    r'(?<!>)>(?!>|&)\s*\S',
 ]
 
 

@@ -231,7 +231,12 @@ async def async_dispatch(tool_name: str, tool_input: dict, ws: "WebSocket", orig
         elif tool_name == "execute_command":
             result = await execute_remote(
                 tool_input["command"],
-                _coerce_bool(tool_input.get("destructive", False), False),
+                # Fail closed: a missing key or an unrecognized value for
+                # "destructive" (garbage type, unparseable string) must be
+                # treated as destructive, not safe. A real bool always passes
+                # through _coerce_bool unchanged regardless of this default,
+                # so a legitimately-typed destructive=False is unaffected.
+                _coerce_bool(tool_input.get("destructive", True), True),
                 tool_input.get("target_device"),
                 origin_device_id,
                 ws,

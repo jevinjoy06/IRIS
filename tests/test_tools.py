@@ -61,6 +61,76 @@ class TestShell:
         from hub.tools import shell
         assert shell.is_destructive_pattern("echo hello") is False
 
+    def test_is_destructive_pattern_remove_item_recurse_force(self):
+        """The plan's own cited example."""
+        from hub.tools import shell
+        assert shell.is_destructive_pattern(
+            "Remove-Item -Recurse -Force C:/Users/jevin/Documents/*"
+        ) is True
+
+    def test_is_destructive_pattern_del_bare(self):
+        from hub.tools import shell
+        assert shell.is_destructive_pattern("del myfile.txt") is True
+
+    def test_is_destructive_pattern_erase_bare(self):
+        from hub.tools import shell
+        assert shell.is_destructive_pattern("erase myfile.txt") is True
+
+    def test_is_destructive_pattern_undelete_not_flagged(self):
+        """Word-boundary check: 'undelete' must not match the bare del/erase pattern."""
+        from hub.tools import shell
+        assert shell.is_destructive_pattern("undelete foo") is False
+
+    def test_is_destructive_pattern_rmdir_s(self):
+        from hub.tools import shell
+        assert shell.is_destructive_pattern(r"rmdir /s /q C:\temp") is True
+
+    def test_is_destructive_pattern_rd_s(self):
+        from hub.tools import shell
+        assert shell.is_destructive_pattern(r"rd /s /q C:\temp") is True
+
+    def test_is_destructive_pattern_rm_fr_combined(self):
+        from hub.tools import shell
+        assert shell.is_destructive_pattern("rm -fr /tmp/test") is True
+
+    def test_is_destructive_pattern_rm_f_r_separate_flags(self):
+        from hub.tools import shell
+        assert shell.is_destructive_pattern("rm -f -r /tmp/test") is True
+
+    def test_is_destructive_pattern_taskkill(self):
+        from hub.tools import shell
+        assert shell.is_destructive_pattern("taskkill /IM chrome.exe /F") is True
+
+    def test_is_destructive_pattern_stop_process(self):
+        from hub.tools import shell
+        assert shell.is_destructive_pattern("Stop-Process -Name notepad -Force") is True
+
+    def test_is_destructive_pattern_reg_delete(self):
+        from hub.tools import shell
+        assert shell.is_destructive_pattern(r"reg delete HKCU\Software\Foo") is True
+
+    def test_is_destructive_pattern_diskpart(self):
+        from hub.tools import shell
+        assert shell.is_destructive_pattern("diskpart") is True
+
+    def test_is_destructive_pattern_truncating_redirect(self):
+        from hub.tools import shell
+        assert shell.is_destructive_pattern(
+            "echo hello > C:/Users/jevin/notes.txt"
+        ) is True
+
+    def test_is_destructive_pattern_appending_redirect_not_flagged(self):
+        """">>" appends — it must NOT be caught by the truncating-redirect pattern."""
+        from hub.tools import shell
+        assert shell.is_destructive_pattern(
+            "echo hello >> C:/Users/jevin/notes.txt"
+        ) is False
+
+    def test_is_destructive_pattern_fd_duplication_not_flagged(self):
+        """"2>&1" is fd duplication, not a truncating file redirect."""
+        from hub.tools import shell
+        assert shell.is_destructive_pattern("some_cmd 2>&1") is False
+
     def test_execute_caps_timeout_at_30(self):
         """execute() caps an oversized timeout at 30s before calling subprocess.run."""
         from hub.tools import shell
@@ -908,6 +978,55 @@ class TestRegistry:
             origin_device_id="desktop-host",
         )
         assert captured["timeout"] == 30
+
+    @pytest.mark.asyncio
+    async def test_execute_command_missing_destructive_key_defaults_true(self, monkeypatch):
+        """Fail closed: an entirely missing "destructive" key must still be
+        passed to execute_remote as True, not False."""
+        from hub.tools import registry
+        captured = {}
+
+        async def fake_execute_remote(command, destructive, target_device, origin_device_id, ws, timeout=30):
+            captured.update(locals())
+            return {"ok": True, "stdout": "ran", "stderr": "", "returncode": 0}
+
+        monkeypatch.setattr(registry, "execute_remote", fake_execute_remote)
+        await registry.async_dispatch(
+            "execute_command",
+            {"command": "echo hi", "target_device": "laptop-host"},
+            AsyncMock(),
+            origin_device_id="desktop-host",
+        )
+        assert captured["destructive"] is True
+
+    @pytest.mark.asyncio
+    async def test_execute_command_garbage_destructive_value_defaults_true(self, monkeypatch):
+        """Fail closed: an unrecognized/garbage "destructive" value (not a
+        real bool, not a recognized string) must coerce to True, not False."""
+        from hub.tools import registry
+        captured = {}
+
+        async def fake_execute_remote(command, destructive, target_device, origin_device_id, ws, timeout=30):
+            captured.update(locals())
+            return {"ok": True, "stdout": "ran", "stderr": "", "returncode": 0}
+
+        monkeypatch.setattr(registry, "execute_remote", fake_execute_remote)
+
+        await registry.async_dispatch(
+            "execute_command",
+            {"command": "echo hi", "destructive": "maybe", "target_device": "laptop-host"},
+            AsyncMock(),
+            origin_device_id="desktop-host",
+        )
+        assert captured["destructive"] is True
+
+        await registry.async_dispatch(
+            "execute_command",
+            {"command": "echo hi", "destructive": ["not", "a", "bool"], "target_device": "laptop-host"},
+            AsyncMock(),
+            origin_device_id="desktop-host",
+        )
+        assert captured["destructive"] is True
 
     def test_shell_run_tool_definition_removed(self):
         from hub.tools.registry import TOOL_DEFINITIONS
