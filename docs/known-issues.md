@@ -11,25 +11,6 @@ Tracked during the Oct 2026 conversational testing pass. Not yet fixed — come 
 3. **Cold-start latency spike** — first message on a fresh connection took 7.7s to
    first token vs. ~0.5s on the second message in the same session. Suspected Ollama
    reloading the model into VRAM after idling out. Not confirmed or addressed.
-12. **`execute_command` tool arguments aren't type-checked before use** — found
-    during Task 12's live end-to-end pass (real hub + real Ollama/`llama3.1:8b`,
-    no mocks). The model sometimes emits `destructive` and `timeout` as JSON
-    *strings* (`"false"`, `"30"`) instead of native bool/int in its tool-call
-    arguments. Two concrete effects observed live: (1) `execute_remote`'s
-    `destructive or shell.is_destructive_pattern(command)` check treats the
-    string `"false"` as truthy — `bool("false")` is `True` in Python — so a
-    stringified `destructive` forces the confirmation gate on even when the
-    model intended "not destructive" (fails safe, not a security problem, but
-    means "runs immediately with no prompt" is less reliable in practice than
-    the code path alone suggests). (2) a stringified `timeout` reaching
-    `shell.py`'s `timeout = min(timeout, 30)` raises
-    `TypeError: '<' not supported between instances of 'int' and 'str'`,
-    caught by `async_dispatch`'s try/except and surfaced as a normal tool
-    error (no crash, no hang, no fabricated success — IRIS correctly reported
-    "the command failed") but it's a real, reproducible defect in argument
-    handling, not an LLM-content-accuracy issue. Neither `execute_remote` nor
-    `registry.async_dispatch` currently coerces/validates tool_input types
-    before use.
 
 ## Known limitations (documented, deliberately deprioritized)
 
@@ -42,7 +23,7 @@ Tracked during the Oct 2026 conversational testing pass. Not yet fixed — come 
    continuous speech), so not chased further.
 7. `/ws` has zero authentication and no Origin check (confirmed via grep — no
    auth/token/secret handling anywhere in `server.py`). Anyone who can reach the hub
-   could connect and use `shell_run`/file tools with no credential. Worth at minimum
+   could connect and use `execute_command`/file tools with no credential. Worth at minimum
    a shared-secret handshake on connect before this leaves a fully trusted network.
    Not fixed yet — personal-devices-only usage for now limits exposure, but it's
    still a real gap. (The network-binding half of this item is resolved; see below.)
@@ -90,6 +71,19 @@ Tracked during the Oct 2026 conversational testing pass. Not yet fixed — come 
 
 ## Resolved since this file was written
 
+- **`execute_command` tool arguments aren't type-checked before use (item 12)** —
+  found during Task 12's live end-to-end pass (real hub + real Ollama/`llama3.1:8b`,
+  no mocks). The model sometimes emitted `destructive` and `timeout` as JSON
+  *strings* (`"false"`, `"30"`) instead of native bool/int in its tool-call
+  arguments, which either forced the confirmation gate on unintentionally
+  (stringified `destructive`) or raised a `TypeError` caught and surfaced as a
+  normal tool error (stringified `timeout`). Fixed by commit `95b2f99`
+  (`hub/tools/registry.py`'s `_coerce_bool`/`_coerce_timeout`), which coerces
+  both `execute_command` arguments from loosely-typed LLM tool-call JSON
+  before they reach `execute_remote`/`shell.py`. As of the final review fix
+  wave, `_coerce_bool`'s default for `destructive` was also changed to fail
+  closed (an unrecognized value now coerces to `True`, not `False`) — see
+  `hub/tools/registry.py`.
 - **Destructive-request suggestion nudge (item 1)** — superseded by the
   cross-device execution work: `execute_command`'s confirmation gate
   (`hub/tools/remote_exec.py::execute_remote`, the `confirm_required` /
