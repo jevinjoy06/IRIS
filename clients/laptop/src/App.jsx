@@ -23,6 +23,7 @@ export default function App() {
   const [speaking, setSpeaking]       = useState(false)
   const [awaitingAudio, setAwaitingAudio] = useState(false)
   const [revealResponse, setRevealResponse] = useState(false)
+  const [pendingConfirmation, setPendingConfirmation] = useState(null)
   const wsRef             = useRef(null)
   const streamingIdRef    = useRef(null)
   const reconnectTimerRef = useRef(null)
@@ -64,6 +65,11 @@ export default function App() {
     ws.onopen = () => {
       setConnected(true)
       clearTimeout(reconnectTimerRef.current)
+      ws.send(JSON.stringify({
+        type: 'register_device',
+        device_id: window.irisConfig?.hostname,
+        device_name: window.irisConfig?.deviceName,
+      }))
     }
 
     ws.onclose = () => {
@@ -72,6 +78,7 @@ export default function App() {
       setWorking(false)
       setSpeaking(false)
       setAwaitingAudio(false)
+      setPendingConfirmation(null)
       clearTimeout(audioTimeoutRef.current)
       audioRef.current?.pause()
       if (streamingIdRef.current) {
@@ -145,6 +152,12 @@ export default function App() {
         )
         streamingIdRef.current = null
         setSending(false)
+      } else if (msg.type === 'confirm_required') {
+        setPendingConfirmation({
+          requestId: msg.request_id,
+          command: msg.command,
+          targetDevice: msg.target_device,
+        })
       } else if (msg.type === 'audio') {
         setAwaitingAudio(false)
         clearTimeout(audioTimeoutRef.current)
@@ -188,6 +201,19 @@ export default function App() {
     }
   }, [connect])
 
+  const respondToConfirmation = useCallback((approved) => {
+    if (!pendingConfirmation || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      setPendingConfirmation(null)
+      return
+    }
+    wsRef.current.send(JSON.stringify({
+      type: 'confirm_response',
+      request_id: pendingConfirmation.requestId,
+      approved,
+    }))
+    setPendingConfirmation(null)
+  }, [pendingConfirmation])
+
   const sendMessage = useCallback((text) => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return
     const userMsg      = { id: crypto.randomUUID(), role: 'user', text, streaming: false }
@@ -211,6 +237,31 @@ export default function App() {
         streaming={speaking}
         active={responseActive}
       />
+
+      {pendingConfirmation && (
+        <div className="absolute left-0 right-0 bottom-28 flex justify-center px-10 z-20">
+          <div className="flex flex-col items-center gap-3 bg-white/[0.04] backdrop-blur-2xl border border-white/[0.07] rounded-2xl px-6 py-4 max-w-2xl">
+            <p className="text-sm font-light tracking-wide leading-relaxed text-white/80 text-center">
+              Run <span className="text-white/95">{pendingConfirmation.command}</span> on{' '}
+              <span className="text-white/95">{pendingConfirmation.targetDevice}</span>?
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => respondToConfirmation(true)}
+                className="px-4 py-1.5 rounded-full bg-white/[0.06] border border-white/[0.1] text-[12px] text-white/70 hover:text-white hover:border-white/[0.2] transition-colors duration-200"
+              >
+                Approve
+              </button>
+              <button
+                onClick={() => respondToConfirmation(false)}
+                className="px-4 py-1.5 rounded-full bg-white/[0.06] border border-white/[0.1] text-[12px] text-white/70 hover:text-white hover:border-white/[0.2] transition-colors duration-200"
+              >
+                Decline
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 flex justify-center">
         <InputBar

@@ -1,5 +1,6 @@
 const { contextBridge } = require('electron')
 const fs = require('fs')
+const os = require('os')
 const path = require('path')
 
 function loadConfig() {
@@ -18,4 +19,6 @@ const config = loadConfig()
 
 contextBridge.exposeInMainWorld('irisConfig', {
   hubUrl: config.hub_url || 'ws://localhost:7865/ws',
+  hostname: os.hostname(),
+  deviceName: config.device_name || null,
 })
