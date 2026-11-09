@@ -29,15 +29,11 @@ Tracked during the Oct 2026 conversational testing pass. Not yet fixed — come 
    bypassable (e.g. PowerShell `Remove-Item -Recurse -Force` isn't caught). Flagged
    as a security observation, not exploited, not fixed.
 7. `/ws` has zero authentication and no Origin check (confirmed via grep — no
-   auth/token/secret handling anywhere in `server.py`), and the hub binds `0.0.0.0`
-   by default. Now that Tailscale is set up, the hub is also reachable from any
-   other network this desktop joins (public wifi, etc.), not just the tailnet —
-   anyone on the same LAN segment could connect and use `shell_run`/file tools with
-   no credential at all. Flagged by automated security review on this session's
-   commit. Worth at minimum a shared-secret handshake on connect, or restricting
-   `HUB_HOST` to the Tailscale interface specifically, before this leaves a fully
-   trusted network. Not fixed yet — personal-devices-only usage for now limits
-   exposure, but it's still a real gap.
+   auth/token/secret handling anywhere in `server.py`). Anyone who can reach the hub
+   could connect and use `shell_run`/file tools with no credential. Worth at minimum
+   a shared-secret handshake on connect before this leaves a fully trusted network.
+   Not fixed yet — personal-devices-only usage for now limits exposure, but it's
+   still a real gap. (The network-binding half of this item is resolved; see below.)
 
 ## Untested surface
 
@@ -57,6 +53,10 @@ Tracked during the Oct 2026 conversational testing pass. Not yet fixed — come 
 
 ## Resolved since this file was written
 
+- **Hub bound to `0.0.0.0` by default (item 7 network exposure)** — `hub/__main__.py`
+  now defaults `HUB_HOST` to `127.0.0.1`, so the hub is no longer reachable from the
+  LAN or other networks unless `HUB_HOST` is set explicitly (e.g. to the machine's
+  Tailscale IP). Auth on `/ws` is still open (item 7 above).
 - **Unbounded tool-trigger keyword list** — `_needs_tools()` used to be an
   allow-list of topic keywords, which meant any topic not anticipated (e.g.
   restaurant recommendations) never got the tool list offered at all, and

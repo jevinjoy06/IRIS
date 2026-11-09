@@ -33,6 +33,8 @@ pip install -r hub/requirements.txt
 # Configure
 cp hub/.env.template hub/.env
 # Edit hub/.env — set OLLAMA_BASE_URL and OLLAMA_MODEL
+# HUB_HOST defaults to 127.0.0.1 (local only). To let other devices connect,
+# set HUB_HOST in hub/.env to this machine's Tailscale IP.
 
 # Run Ollama (separate terminal)
 ollama serve
