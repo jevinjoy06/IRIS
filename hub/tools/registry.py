@@ -138,7 +138,12 @@ TOOL_DEFINITIONS = [
 
 
 _TRUE_STRINGS = {"true", "yes", "1"}
-_FALSE_STRINGS = {"false", "no", "0", ""}
+# "" is deliberately absent: an empty string means absent/unset, not a
+# clear "false" signal, so it must fall through to the caller's default —
+# for the "destructive" call site, that default is True (fail closed). It
+# used to be included here, which silently treated an empty-string
+# destructive value as safe-to-run-without-confirmation.
+_FALSE_STRINGS = {"false", "no", "0"}
 
 
 def _coerce_bool(value, default: bool) -> bool:
