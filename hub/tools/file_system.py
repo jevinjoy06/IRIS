@@ -6,9 +6,20 @@ _ALLOWED_ROOT = Path(os.environ.get("FILE_SYSTEM_ROOT") or str(Path.home())).res
 
 
 def _safe_path(raw: str) -> Path:
-    """Resolve path and reject traversals outside the allowed root."""
+    """Resolve path and reject traversals outside the allowed root.
+
+    Uses Path.relative_to() rather than a string prefix check: a plain
+    str(candidate).startswith(str(_ALLOWED_ROOT)) is a classic path-traversal
+    bug — it has no notion of a path-segment boundary, so a sibling
+    directory whose name merely starts with the root's name (e.g. root
+    "C:\\Users\\jevin" and a sibling "C:\\Users\\jevinSecrets", reached via
+    "../jevinSecrets/x.txt") would wrongly pass. relative_to() raises unless
+    candidate is actually root itself or nested under it.
+    """
     candidate = (_ALLOWED_ROOT / raw).resolve()
-    if not str(candidate).startswith(str(_ALLOWED_ROOT)):
+    try:
+        candidate.relative_to(_ALLOWED_ROOT)
+    except ValueError:
         raise PermissionError(f"Path '{raw}' escapes allowed root '{_ALLOWED_ROOT}'")
     return candidate
 
