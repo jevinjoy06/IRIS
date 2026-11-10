@@ -114,6 +114,35 @@ class TestFactsEndpoints:
         assert "created_at" in fact
         assert "access_count" in fact
 
+    def test_create_fact_invalid_tier_is_clean_422_not_500(self, client, temp_db):
+        # Regression test: an invalid tier used to sail past validation,
+        # hit the facts table's CHECK(tier IN (...)) constraint, and
+        # surface as a raw unhandled 500 instead of a clean validation error.
+        response = client.post("/api/facts", json={"content": "x", "tier": "urgent"})
+        assert response.status_code == 422
+
+    def test_create_fact_importance_above_one_is_422(self, client, temp_db):
+        response = client.post("/api/facts", json={"content": "x", "importance": 99.0})
+        assert response.status_code == 422
+
+    def test_create_fact_importance_negative_is_422(self, client, temp_db):
+        response = client.post("/api/facts", json={"content": "x", "importance": -0.5})
+        assert response.status_code == 422
+
+    def test_create_fact_importance_boundary_values_accepted(self, client, temp_db):
+        assert client.post("/api/facts", json={"content": "x", "importance": 0.0}).status_code == 201
+        assert client.post("/api/facts", json={"content": "y", "importance": 1.0}).status_code == 201
+
+    def test_update_fact_invalid_tier_is_clean_422_not_500(self, client, temp_db):
+        created = client.post("/api/facts", json={"content": "x"}).json()
+        response = client.patch(f"/api/facts/{created['id']}", json={"tier": "urgent"})
+        assert response.status_code == 422
+
+    def test_update_fact_importance_out_of_range_is_422(self, client, temp_db):
+        created = client.post("/api/facts", json={"content": "x"}).json()
+        response = client.patch(f"/api/facts/{created['id']}", json={"importance": 5.0})
+        assert response.status_code == 422
+
     def test_update_fact_content_only(self, client, temp_db):
         """Test PATCH /api/facts/{id} updates only content."""
         fact_id = memory.write_fact("Original", tier="core", importance=0.8)

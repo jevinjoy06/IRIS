@@ -4,6 +4,7 @@ import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Literal
 
 from dotenv import load_dotenv
 
@@ -13,7 +14,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from hub import brain, devices, memory, pending_confirmations
 from hub.tools import remote_exec
@@ -337,18 +338,31 @@ async def agent_websocket_endpoint(ws: WebSocket) -> None:
         remote_exec.fail_pending_for_ws(ws)
 
 
-# Pydantic models for REST API
+# Pydantic models for REST API.
+#
+# tier is constrained to the exact set the facts table's CHECK(tier IN (...))
+# enforces at the DB layer (hub/memory.py init_db()). Before this, a bad tier
+# value (e.g. "urgent") sailed through Pydantic as a plain str, hit the DB
+# constraint, and surfaced as a raw unhandled 500 — this validates it at the
+# API boundary instead, same as the existing "content is required" 422.
+# importance is bounded to the 0.0-1.0 range the memory_write tool's own
+# schema documents but never enforced; nothing downstream clamps it, so an
+# out-of-range value (e.g. 99.0) would otherwise sit in the DB forever,
+# skewing every importance-sorted query.
+_Tier = Literal["core", "relevant", "archive"]
+
+
 class FactCreate(BaseModel):
     content: str
-    tier: str = "relevant"
-    importance: float = 0.5
+    tier: _Tier = "relevant"
+    importance: float = Field(default=0.5, ge=0.0, le=1.0)
     tags: list[str] = []
 
 
 class FactUpdate(BaseModel):
     content: str | None = None
-    tier: str | None = None
-    importance: float | None = None
+    tier: _Tier | None = None
+    importance: float | None = Field(default=None, ge=0.0, le=1.0)
     tags: list[str] | None = None
 
 
