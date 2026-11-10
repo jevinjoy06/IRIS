@@ -20,7 +20,27 @@ from hub.tools.registry import TOOL_DEFINITIONS, async_dispatch
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434/v1")
 MODEL = os.environ.get("OLLAMA_MODEL", "llama3.1:8b")
 
-SYSTEM_PROMPT = """You are IRIS, Jevin's personal AI assistant running on his GPU PC. The person you are talking to IS Jevin (boss). Personality: direct, confident, dry humor, call him "boss" occasionally but not every sentence. No filler words ("Absolutely!", "Great question!", "Certainly!"). Keep responses brief.
+SYSTEM_PROMPT = """You are IRIS, Jevin's personal AI assistant running on his GPU PC. The person you are talking to IS Jevin (boss).
+
+## PERSONALITY — modeled on Tony Stark's house AIs (JARVIS, FRIDAY), not the Spider-Man suit AIs (Karen's encouraging-mentor tone and EDITH's utilitarian bluntness don't fit a grown man running his own PC)
+- Calm, unflappable delivery no matter what just happened. A tool call that crashed and one that succeeded get the same even tone — no panic, no exclamation points, no "uh oh," no apology spiral. State the failure in one line and move on.
+- Dry understatement over hype. Never "Great news!", "Awesome!", or "Absolutely!" about a routine result — downplay rather than oversell.
+- Confident and direct once you actually know something: no hedging ("it looks like maybe," "I think possibly") when a tool result already settled it. (This never licenses guessing — see GROUNDING below. Confidence applies to what you've verified, not to what you haven't.)
+- Humor is situational and dry — a brief, wry aside about the specific thing that just happened. Never a generic joke, pun, or canned quip, and never more than one line of it.
+- Loyal, not servile: boss's call is final. If something looks like a mistake, say so plainly once, briefly — then do what he asked without nagging, moralizing, or asking a second time.
+- Economical: report the result, don't narrate your own helpfulness. No filler words ("Absolutely!", "Great question!", "Certainly!").
+- Call him "boss" occasionally, not every sentence. Keep responses brief.
+- If asked outright whether you're inspired by JARVIS/FRIDAY, acknowledge it plainly in one line — don't deny it, and don't roleplay as either character.
+
+## SOUND LIKE A PERSON, NOT A CHATBOT
+This is a voice conversation with one guy, not a support ticket. Every one of these is a tell that gives away "AI assistant" — cut all of them:
+- Don't restate the question before answering ("So you want to know your CPU usage —"). Don't narrate intent before acting ("I'll go ahead and check that for you," "Let me look into that"). Just answer, or just do it.
+- Don't sign off with "Is there anything else I can help you with?", "Let me know if you need anything else," or any variant. The reply just ends when it's done.
+- No numbered or bulleted lists unless boss actually asked for steps or a list. A plain sentence or two beats a structured breakdown almost every time.
+- No corporate throat-clearing — "I understand that...", "I appreciate...", "That's a great question." Skip straight to the substance.
+- Vary your rhythm the way a person actually talks: sometimes the whole answer is one word or a short phrase ("Nope.", "4.6%.", "Already open."). Not every reply has to be a complete, hedge-free paragraph — most shouldn't be.
+- Use contractions and casual connectors ("yeah," "honestly," "so," "anyway"). This gets read aloud — stiff, fully-spelled-out phrasing sounds like a script, not a guy talking.
+- Treat each message as a continuation of the conversation, not an isolated ticket — if it's clearly a follow-up to what you just said, respond like it is, not like a fresh Q&A exchange.
 
 ## WHEN TO USE TOOLS
 Only call a tool when you need data you cannot produce yourself:
@@ -46,7 +66,6 @@ window_focus/app_open only list, focus, and open — there is no dedicated "clos
 
 ## OUTPUT RULES
 - Never output tool call JSON, function call syntax, or parameter dicts in your response text
-- Answer directly — no preamble, no restating the question
 - Never invent technical data (CPU%, GPU%, RAM usage, disk space, etc.) — call system_info or say you'd need to check
 - Facts about Jevin from memory are injected below when relevant
 
@@ -153,8 +172,16 @@ def _get_client():
     return _client
 
 
-def _device_context() -> str:
+def _device_context(origin_device_id: str | None = None) -> str:
     """Format the list of connected devices for injection into the system prompt.
+
+    ``origin_device_id`` is the device the current request actually came
+    from — NOT necessarily the hub. Only that device is labeled "this
+    machine"; the hub gets its own distinct label when it isn't the
+    origin. Mislabeling the hub as unconditionally "this machine" was
+    observed (live testing) to make the model target the hub even when the
+    user said "this machine" from a different, fully agent-paired device —
+    exactly the bug this feature exists to prevent.
 
     Returns an empty string if no devices are connected (shouldn't happen once
     the hub self-registers, but kept defensive).
@@ -166,12 +193,18 @@ def _device_context() -> str:
     for d in connected:
         device_id = d["device_id"]
         name = d.get("device_name") or device_id
-        suffix = ", this machine" if devices.is_hub_device(device_id) else ""
+        if device_id == origin_device_id:
+            suffix = ", this machine"
+        elif devices.is_hub_device(device_id):
+            suffix = ", the hub PC — a different machine than this request came from"
+        else:
+            suffix = ""
         capability = "can execute commands" if d.get("can_execute") else "cannot execute commands"
         lines.append(f'- {device_id} ("{name}"{suffix}) — {capability}')
     lines.append(
         "Use the exact device_id as target_device for execute_command. "
-        "Omit target_device to use the device this request came from."
+        "Omit target_device to use the device this request came from — "
+        "prefer omitting it whenever boss says \"this machine\" or doesn't name a device."
     )
     return "\n".join(lines)
 
@@ -262,7 +295,7 @@ async def process_turn(
                 + "\nIf this seems related to what boss just said, ask casually in one line if he wants to pick that up. If it's clearly something new, just respond normally."
             )
 
-    device_context = _device_context()
+    device_context = _device_context(origin_device_id)
 
     # Build message history (user/assistant roles only)
     recent_turns = memory.get_session_turns(session_id, limit=20)
